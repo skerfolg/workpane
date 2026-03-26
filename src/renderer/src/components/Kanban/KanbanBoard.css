@@ -1,0 +1,70 @@
+/* IDE Redesign — KanbanBoard */
+.kanban-board {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--bg-1);
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+
+.kanban-board__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+  gap: 8px;
+  font-size: var(--fs-xs);
+}
+
+.kanban-board__sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kanban-board__sort-label {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  font-family: var(--font-sans);
+}
+
+.kanban-board__sort-select {
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-3);
+  color: var(--text-1);
+  font-size: var(--fs-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--tr-fast);
+}
+
+.kanban-board__sort-select:focus {
+  border-color: var(--accent);
+}
+
+.kanban-board__columns {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  padding: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.kanban-board__loading,
+.kanban-board__error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}

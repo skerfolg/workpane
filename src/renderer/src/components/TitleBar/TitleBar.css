@@ -1,0 +1,136 @@
+/* Custom TitleBar — theme-aware, draggable */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+  user-select: none;
+  flex-shrink: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* Left section: app icon + name */
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.titlebar-app-icon {
+  font-size: var(--fs-md);
+  color: var(--accent);
+  line-height: 1;
+}
+
+.titlebar-app-name {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+  color: var(--text-1);
+  letter-spacing: 0.3px;
+}
+
+/* Center section: workspace name */
+.titlebar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+
+.titlebar-workspace {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+/* Right section: toggles + window controls */
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+/* Toggle button group */
+.titlebar-toggles {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--tr-fast), color var(--tr-fast);
+}
+
+.titlebar-toggle:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.titlebar-toggle.active {
+  color: var(--accent);
+}
+
+.titlebar-toggle.active:hover {
+  background: var(--accent-muted);
+}
+
+.titlebar-toggle:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Window control buttons */
+.titlebar-window-controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--tr-fast), color var(--tr-fast);
+}
+
+.titlebar-btn:hover {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.titlebar-btn-close:hover {
+  background: #e81123;
+  color: #ffffff;
+}

@@ -1,0 +1,55 @@
+.code-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  background-color: var(--bg-1);
+  color: var(--text-1);
+}
+
+.code-editor__container {
+  flex: 1;
+  position: relative;
+}
+
+/* Monaco editor fills container */
+.code-editor__container .monaco-editor {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Fix: allow overflow widgets (find widget tooltips, hover, suggest) to render fully */
+.code-editor__container .monaco-editor .overflow-guard {
+  overflow: visible !important;
+}
+
+.code-editor__container .monaco-editor .overflowingContentWidgets {
+  z-index: 1000;
+}
+
+.code-editor__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+}
+
+.code-editor__warning {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background-color: var(--bg-3);
+  border-bottom: 1px solid var(--border-1);
+  color: var(--text-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm, 0.85em);
+  flex-shrink: 0;
+}

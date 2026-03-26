@@ -1,0 +1,99 @@
+/* Industrial-Precision IDE — CommandPalette */
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 2000;
+}
+
+.command-palette {
+  background: var(--bg-2);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  width: 480px;
+  max-height: 440px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.command-palette__input-row {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+  height: 32px;
+}
+
+.command-palette__input {
+  flex: 1;
+  height: 32px;
+  background: none;
+  border: none;
+  color: var(--text-1);
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  outline: none;
+}
+
+.command-palette__input::placeholder {
+  color: var(--text-3);
+}
+
+.command-palette__list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.command-palette__empty {
+  padding: var(--sp-5) var(--sp-4);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.command-palette__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--sp-4);
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  gap: var(--sp-2);
+  transition: background-color var(--tr-fast), border-color var(--tr-fast);
+}
+
+.command-palette__item:hover,
+.command-palette__item--active {
+  background-color: var(--accent-muted);
+  border-left-color: var(--accent);
+}
+
+.command-palette__item-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-palette__item-shortcut {
+  font-size: var(--fs-2xs);
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}

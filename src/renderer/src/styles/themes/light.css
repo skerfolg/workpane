@@ -1,0 +1,59 @@
+/* Industrial-Precision Light Theme */
+:root[data-theme='light'] {
+  /* Background Tiers */
+  --activity-bar-bg: #2c2c2c;
+  --sidebar-bg: #f0f1f3;
+  --bg-1: #ffffff;
+  --bg-2: #f7f8fa;
+  --bg-3: #ebedf0;
+  --bg-4: #e0e2e8;
+
+  /* Borders */
+  --border-1: #d8dae0;
+  --border-2: #c8cad0;
+
+  /* Text Tiers */
+  --text-1: #1a1b20;
+  --text-2: #6b6d78;
+  --text-3: #a0a2ad;
+
+  /* Accent */
+  --accent: #0066db;
+  --accent-hover: #0077ed;
+  --accent-muted: rgba(0, 102, 219, 0.1);
+  --accent-border: rgba(0, 102, 219, 0.25);
+
+  /* Semantic Colors */
+  --success: #1a9e5c;
+  --warning: #d97706;
+  --error: #dc2626;
+  --info: #0066db;
+
+  /* Tab Colors */
+  --tab-active-bg: var(--bg-1);
+  --tab-inactive-bg: var(--sidebar-bg);
+
+  /* Backward compatibility aliases */
+  --color-bg-primary: var(--bg-1);
+  --color-bg-secondary: var(--bg-2);
+  --color-bg-tertiary: var(--bg-3);
+  --color-text-primary: var(--text-1);
+  --color-text-secondary: var(--text-2);
+  --color-text-muted: var(--text-3);
+  --color-border: var(--border-1);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-glow: var(--accent-muted);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-activity-bar-bg: var(--activity-bar-bg);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-terminal-bg: var(--bg-1);
+  --color-tab-active-bg: var(--tab-active-bg);
+  --color-tab-inactive-bg: var(--tab-inactive-bg);
+  --color-bg-elevated: var(--bg-4);
+  --color-border-subtle: var(--border-1);
+  --color-surface-glass: var(--bg-2);
+  --accent-subtle: var(--accent-muted);
+}

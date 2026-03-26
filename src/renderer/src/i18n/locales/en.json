@@ -1,0 +1,10 @@
+{
+  "app": { "title": "Workspace Manager" },
+  "sidebar": { "terminals": "Terminals", "issues": "Issues", "documents": "Documents" },
+  "activityBar": { "explorer": "Explorer", "kanban": "Kanban Board", "search": "Search", "settings": "Settings" },
+  "common": { "close": "Close", "delete": "Delete", "rename": "Rename", "create": "New", "save": "Save", "cancel": "Cancel" },
+  "terminal": { "newTerminal": "New Terminal", "split": "Split", "tiling": "Tiling Mode", "tabMode": "Tab Mode" },
+  "workspace": { "open": "Open Folder", "recent": "Recent Workspaces", "switch": "Switch Workspace" },
+  "kanban": { "open": "Open", "inProgress": "In Progress", "resolved": "Resolved", "newIssue": "New Issue" },
+  "settings": { "general": "General", "appearance": "Appearance", "terminal": "Terminal", "editor": "Editor", "workspace": "Workspace" }
+}

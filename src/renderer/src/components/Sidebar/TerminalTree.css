@@ -1,0 +1,228 @@
+/* Industrial-Precision — TerminalTree */
+.terminal-tree {
+  position: relative;
+  user-select: none;
+}
+
+.terminal-tree__actions {
+  display: flex;
+  padding: var(--sp-1) var(--sp-3);
+}
+
+.terminal-tree__empty {
+  list-style: none;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  font-style: italic;
+  font-family: var(--font-sans);
+}
+
+.terminal-tree__add-btn {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  font-family: var(--font-sans);
+  line-height: 1;
+  padding: 0 var(--sp-1);
+  border-radius: var(--radius-sm);
+  transition: color var(--tr-fast), background-color var(--tr-fast);
+}
+
+.terminal-tree__add-btn:hover {
+  color: var(--text-2);
+  background-color: var(--bg-3);
+}
+
+.terminal-tree__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---- Group styles ---- */
+
+.terminal-tree__group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 26px;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-2);
+  border-left: 2px solid transparent;
+  transition: background-color var(--tr-fast), color var(--tr-fast);
+}
+
+.terminal-tree__group:hover {
+  background-color: var(--bg-3);
+  color: var(--text-1);
+}
+
+.terminal-tree__group--active {
+  background-color: var(--accent-muted);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.terminal-tree__group--dragover {
+  background-color: var(--accent-muted);
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+
+.terminal-tree__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
+  flex-shrink: 0;
+  transition: transform var(--tr-fast);
+  opacity: 0.6;
+}
+
+.terminal-tree__chevron--open {
+  transform: rotate(90deg);
+}
+
+.terminal-tree__group-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-tree__group-count {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  flex-shrink: 0;
+  min-width: 16px;
+  text-align: center;
+}
+
+.terminal-tree__terminals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.terminal-tree__add-terminal {
+  list-style: none;
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) calc(var(--sp-3) + 20px);
+}
+
+.terminal-tree__add-btn--small {
+  font-size: var(--fs-xs);
+  opacity: 0.6;
+}
+
+.terminal-tree__add-btn--small:hover {
+  opacity: 1;
+}
+
+.terminal-tree__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 22px;
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) calc(var(--sp-3) + 20px);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  color: var(--text-2);
+  border-left: 2px solid transparent;
+  position: relative;
+  transition: background-color var(--tr-fast), color var(--tr-fast);
+}
+
+.terminal-tree__item:hover {
+  background-color: var(--bg-3);
+  color: var(--text-1);
+}
+
+.terminal-tree__item--active {
+  background-color: var(--accent-muted);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.terminal-tree__item--active .terminal-tree__icon {
+  color: var(--accent);
+}
+
+.terminal-tree__icon {
+  font-size: var(--fs-sm);
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  opacity: 0.7;
+  transition: opacity var(--tr-fast);
+}
+
+.terminal-tree__item:hover .terminal-tree__icon {
+  opacity: 1;
+}
+
+.terminal-tree__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-tree__rename-input {
+  flex: 1;
+  background: var(--bg-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  padding: 1px var(--sp-1);
+  outline: none;
+}
+
+.terminal-tree__context-menu {
+  position: fixed;
+  z-index: 1000;
+  background-color: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  min-width: 140px;
+  padding: var(--sp-1) 0;
+}
+
+.terminal-tree__context-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-1);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  transition: background-color var(--tr-fast);
+}
+
+.terminal-tree__context-item:hover {
+  background-color: var(--bg-3);
+}
+
+.terminal-tree__context-item--danger {
+  color: var(--error);
+}
+
+.terminal-tree__context-item--danger:hover {
+  background-color: rgba(217, 64, 64, 0.12);
+  color: var(--error);
+}

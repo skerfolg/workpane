@@ -1,0 +1,73 @@
+/* Industrial-Precision — Sidebar */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--sidebar-bg);
+  color: var(--text-1);
+  overflow: hidden;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-1);
+  min-width: 150px;
+  max-width: 500px;
+}
+
+.sidebar__header {
+  padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font-sans);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border-1);
+  background-color: transparent;
+  flex-shrink: 0;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.sidebar__content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+}
+
+/* Section */
+.sidebar__section {
+  border-bottom: 1px solid var(--border-1);
+}
+
+.sidebar__section:last-child {
+  border-bottom: none;
+}
+
+.sidebar__section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 22px;
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  font-family: var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--tr-fast);
+}
+
+.sidebar__section-header:hover {
+  color: var(--text-2);
+}
+
+.sidebar__section-chevron {
+  font-size: 8px;
+  line-height: 1;
+  flex-shrink: 0;
+  color: var(--text-3);
+}

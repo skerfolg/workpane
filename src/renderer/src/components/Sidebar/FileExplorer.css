@@ -1,0 +1,173 @@
+/* Industrial-Precision — FileExplorer */
+.file-explorer {
+  position: relative;
+  user-select: none;
+  overflow-y: auto;
+}
+
+.file-explorer__empty {
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  font-style: italic;
+  font-family: var(--font-sans);
+}
+
+.file-explorer__loading {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  font-style: italic;
+  font-family: var(--font-sans);
+  padding: var(--sp-1) var(--sp-3);
+}
+
+.file-explorer__node {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 22px;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  color: var(--text-2);
+  white-space: nowrap;
+  transition: background-color var(--tr-fast), color var(--tr-fast);
+}
+
+.file-explorer__node:hover {
+  background-color: var(--bg-3);
+  color: var(--text-1);
+}
+
+.file-explorer__node--active {
+  color: var(--accent);
+  background-color: var(--accent-muted);
+}
+
+.file-explorer__node--active:hover {
+  color: var(--accent);
+  background-color: var(--accent-muted);
+}
+
+.file-explorer__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.file-explorer__chevron--spacer {
+  visibility: hidden;
+}
+
+.file-explorer__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-2);
+  opacity: 0.8;
+}
+
+.file-explorer__node:hover .file-explorer__icon {
+  opacity: 1;
+}
+
+/* File type icon colors */
+.file-explorer__icon--ts {
+  color: #3178c6;
+}
+
+.file-explorer__icon--js {
+  color: #f0db4f;
+}
+
+.file-explorer__icon--json {
+  color: #a8b065;
+}
+
+.file-explorer__icon--md {
+  color: #519aba;
+}
+
+.file-explorer__icon--css {
+  color: #563d7c;
+}
+
+.file-explorer__icon--html {
+  color: #e34c26;
+}
+
+.file-explorer__icon--default {
+  color: var(--text-2);
+}
+
+.file-explorer__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-explorer__rename-input {
+  flex: 1;
+  background: var(--bg-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  padding: 1px var(--sp-1);
+  outline: none;
+}
+
+.file-explorer__children {
+  /* depth handled by inline paddingLeft */
+}
+
+/* Context menu */
+.file-explorer__context-menu {
+  position: fixed;
+  z-index: 1000;
+  background-color: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  min-width: 160px;
+  padding: var(--sp-1) 0;
+}
+
+.file-explorer__context-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-1);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  transition: background-color var(--tr-fast);
+}
+
+.file-explorer__context-item:hover {
+  background-color: var(--bg-3);
+}
+
+.file-explorer__context-item--danger {
+  color: var(--error);
+}
+
+.file-explorer__context-item--danger:hover {
+  background-color: rgba(217, 64, 64, 0.12);
+  color: var(--error);
+}
+
+.file-explorer__context-separator {
+  height: 1px;
+  background-color: var(--border-1);
+  margin: var(--sp-1) 0;
+}

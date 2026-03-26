@@ -1,0 +1,192 @@
+/* LinkDocumentDialog — modal for linking a document to a kanban issue */
+.link-doc-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background-color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.link-doc-dialog {
+  background-color: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  width: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+.link-doc-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.link-doc-dialog__title {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.link-doc-dialog__close {
+  background: none;
+  border: none;
+  font-size: var(--fs-lg);
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0 var(--sp-1);
+  line-height: 1;
+  transition: color var(--tr-fast);
+}
+
+.link-doc-dialog__close:hover {
+  color: var(--text-1);
+}
+
+.link-doc-dialog__doc-info {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  background-color: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.link-doc-dialog__doc-label {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.link-doc-dialog__doc-title {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-doc-dialog__search-row {
+  padding: var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.link-doc-dialog__search {
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  color: var(--text-1);
+  background-color: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.link-doc-dialog__search:focus {
+  border-color: var(--accent);
+}
+
+.link-doc-dialog__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-1) 0;
+}
+
+.link-doc-dialog__empty {
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  font-style: italic;
+  text-align: center;
+}
+
+.link-doc-dialog__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  cursor: pointer;
+  transition: background-color var(--tr-fast);
+}
+
+.link-doc-dialog__item:hover {
+  background-color: var(--bg-3);
+}
+
+.link-doc-dialog__item--selected {
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.link-doc-dialog__item--selected:hover {
+  background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.link-doc-dialog__item-status {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  min-width: 64px;
+}
+
+.link-doc-dialog__item-title {
+  font-size: var(--fs-base);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.link-doc-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border-1);
+}
+
+.link-doc-dialog__btn {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-1);
+  cursor: pointer;
+  transition: background-color var(--tr-fast), opacity var(--tr-fast);
+}
+
+.link-doc-dialog__btn--cancel {
+  background-color: var(--bg-3);
+  color: var(--text-1);
+}
+
+.link-doc-dialog__btn--cancel:hover {
+  background-color: var(--bg-4);
+}
+
+.link-doc-dialog__btn--confirm {
+  background-color: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.link-doc-dialog__btn--confirm:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.link-doc-dialog__btn--confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

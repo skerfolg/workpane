@@ -1,0 +1,76 @@
+/* IDE Redesign — StatusBar */
+.status-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 22px;
+  min-height: 22px;
+  background-color: var(--activity-bar-bg);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-family: var(--font-sans);
+  user-select: none;
+  flex-shrink: 0;
+  z-index: 100;
+  padding: 0 var(--sp-3);
+  gap: var(--sp-2);
+}
+
+.status-bar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.status-bar__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  flex: 1;
+}
+
+.status-bar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-0);
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.status-bar__item {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  height: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-xs);
+  cursor: default;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--tr-fast);
+}
+
+.status-bar__item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.status-bar__sep {
+  color: var(--text-3);
+  padding: 0 2px;
+  font-size: var(--fs-xs);
+  user-select: none;
+}
+
+.status-bar__workspace {
+  font-weight: var(--fw-medium);
+  max-width: 200px;
+}
+
+.status-bar__filename {
+  max-width: 160px;
+}

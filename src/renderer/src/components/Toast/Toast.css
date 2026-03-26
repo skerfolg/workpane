@@ -1,0 +1,92 @@
+/* Industrial-Precision IDE — Toast Notifications */
+.toast-container {
+  position: fixed;
+  bottom: calc(22px + 8px); /* above status bar (22px) + 8px gap */
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  z-index: 9000;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 200px;
+  max-width: 360px;
+  min-height: 32px;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  color: var(--text-1);
+  pointer-events: auto;
+  animation: toast-enter 0.2s ease-out forwards;
+}
+
+.toast--success {
+  border-left: 3px solid var(--success);
+}
+
+.toast--error {
+  border-left: 3px solid var(--error);
+}
+
+.toast--info {
+  border-left: 3px solid var(--accent);
+}
+
+.toast__icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+  width: 14px;
+  text-align: center;
+}
+
+.toast--success .toast__icon { color: var(--success); }
+.toast--error .toast__icon { color: var(--error); }
+.toast--info .toast__icon { color: var(--accent); }
+
+.toast__message {
+  flex: 1;
+  line-height: var(--lh-normal);
+  word-break: break-word;
+}
+
+.toast__close {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: color var(--tr-fast);
+}
+
+.toast__close:hover {
+  color: var(--text-1);
+}
+
+@keyframes toast-enter {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}

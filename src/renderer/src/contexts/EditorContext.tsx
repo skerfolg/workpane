@@ -1,0 +1,222 @@
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react'
+import { disposeModel, updateModelContent } from '../utils/monaco-model-cache'
+import { getContent, setContent, removeContent } from '../utils/content-store'
+
+export interface EditorTab {
+  id: string
+  filePath: string
+  title: string
+  isActive: boolean
+  isDirty: boolean
+  mtime?: number
+  isConflicted?: boolean
+}
+
+interface EditorContextValue {
+  tabs: EditorTab[]
+  activeTab: EditorTab | null
+  openFile: (filePath: string) => Promise<void>
+  closeTab: (id: string) => void
+  setActiveTab: (id: string) => void
+  reorderTabs: (from: number, to: number) => void
+  updateContent: (id: string, newContent: string) => void
+  saveFile: (id: string) => Promise<void>
+  resolveConflict: (id: string, action: 'reload' | 'ignore') => Promise<void>
+}
+
+export const EditorContext = createContext<EditorContextValue | null>(null)
+
+let tabIdCounter = 0
+
+export function EditorProvider({ children }: { children: ReactNode }): React.JSX.Element {
+  const [tabs, setTabs] = useState<EditorTab[]>([])
+  const tabsRef = useRef<EditorTab[]>(tabs)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Keep ref in sync with state so interval callbacks see current tabs
+  useEffect(() => {
+    tabsRef.current = tabs
+  }, [tabs])
+
+  const activeTab = tabs.find((t) => t.isActive) ?? null
+
+  // Auto-save setup: read interval from settings
+  useEffect(() => {
+    const setupStart = performance.now()
+    let interval = 30000
+
+    const startAutoSave = (ms: number): void => {
+      if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current)
+      console.log(`[PERF][Renderer] EditorContext auto-save setup: ${(performance.now() - setupStart).toFixed(1)}ms, interval: ${ms}ms`)
+      autoSaveTimerRef.current = setInterval(async () => {
+        const settings = await window.settings.get('general') as { autoSave?: boolean; autoSaveInterval?: number } | null
+        if (!settings?.autoSave) return
+        const dirtyTabs = tabsRef.current.filter((t) => t.isDirty && !t.isConflicted)
+        for (const tab of dirtyTabs) {
+          try {
+            const content = getContent(tab.filePath)
+            await window.fs.writeFile(tab.filePath, content)
+            setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, isDirty: false } : t)))
+          } catch (err) {
+            console.error('Auto-save failed for', tab.filePath, err)
+          }
+        }
+      }, ms)
+    }
+
+    window.settings.get('general').then((s) => {
+      const gen = s as { autoSave?: boolean; autoSaveInterval?: number } | null
+      if (gen?.autoSaveInterval) interval = gen.autoSaveInterval
+      startAutoSave(interval)
+    }).catch(() => startAutoSave(interval))
+
+    return () => {
+      if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current)
+    }
+  }, [])
+
+  // File watcher conflict detection
+  useEffect(() => {
+    const unsubscribe = window.watcher.onChanged(async (data) => {
+      if (data.type !== 'change') return
+      const changedPath = data.path.replace(/\\/g, '/')
+      const matchingTab = tabsRef.current.find(
+        (t) => t.filePath.replace(/\\/g, '/') === changedPath && t.isDirty
+      )
+      if (!matchingTab) return
+
+      // Check mtime to confirm external change
+      try {
+        // We can't get mtime directly via fs API, so we mark conflict on any watcher change for dirty tab
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === matchingTab.id ? { ...t, isConflicted: true } : t
+          )
+        )
+      } catch (err) {
+        console.error('Conflict check failed:', err)
+      }
+    })
+    return () => unsubscribe()
+  }, [])
+
+  const openFile = useCallback(async (filePath: string) => {
+    setTabs((prev) => {
+      const existing = prev.find((t) => t.filePath === filePath)
+      if (existing) {
+        return prev.map((t) => ({ ...t, isActive: t.id === existing.id }))
+      }
+      return prev
+    })
+
+    const alreadyOpen = tabsRef.current.find((t) => t.filePath === filePath)
+    if (alreadyOpen) return
+
+    try {
+      const fileContent = await window.fs.readFile(filePath)
+      const title = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath
+      const id = `tab-${++tabIdCounter}`
+
+      setContent(filePath, fileContent)
+
+      setTabs((prev) => [
+        ...prev.map((t) => ({ ...t, isActive: false })),
+        { id, filePath, title, isActive: true, isDirty: false, isConflicted: false }
+      ])
+    } catch (err) {
+      console.error('Failed to open file:', err)
+    }
+  }, [])
+
+  const closeTab = useCallback((id: string) => {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === id)
+      if (idx === -1) return prev
+      // Dispose the cached Monaco model and content store entry for this tab
+      disposeModel(prev[idx].filePath)
+      removeContent(prev[idx].filePath)
+      const next = prev.filter((t) => t.id !== id)
+      if (next.length === 0) return next
+      const wasActive = prev[idx].isActive
+      if (wasActive) {
+        const newActiveIdx = Math.min(idx, next.length - 1)
+        return next.map((t, i) => ({ ...t, isActive: i === newActiveIdx }))
+      }
+      return next
+    })
+  }, [])
+
+  const setActiveTab = useCallback((id: string) => {
+    setTabs((prev) => prev.map((t) => ({ ...t, isActive: t.id === id })))
+  }, [])
+
+  const reorderTabs = useCallback((from: number, to: number) => {
+    setTabs((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+  }, [])
+
+  const updateContent = useCallback((id: string, newContent: string) => {
+    const tab = tabsRef.current.find((t) => t.id === id)
+    if (tab) {
+      setContent(tab.filePath, newContent)
+    }
+    setTabs((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, isDirty: true } : t))
+    )
+  }, [])
+
+  const saveFile = useCallback(async (id: string) => {
+    const tab = tabsRef.current.find((t) => t.id === id)
+    if (!tab) return
+    try {
+      const content = getContent(tab.filePath)
+      await window.fs.writeFile(tab.filePath, content)
+      setTabs((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, isDirty: false, isConflicted: false } : t))
+      )
+    } catch (err) {
+      console.error('Failed to save file:', err)
+    }
+  }, [])
+
+  const resolveConflict = useCallback(async (id: string, action: 'reload' | 'ignore') => {
+    const tab = tabsRef.current.find((t) => t.id === id)
+    if (!tab) return
+    if (action === 'reload') {
+      try {
+        const content = await window.fs.readFile(tab.filePath)
+        setContent(tab.filePath, content)
+        updateModelContent(tab.filePath, content)
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...t, isDirty: false, isConflicted: false } : t
+          )
+        )
+      } catch (err) {
+        console.error('Failed to reload file:', err)
+      }
+    } else {
+      setTabs((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, isConflicted: false } : t))
+      )
+    }
+  }, [])
+
+  return (
+    <EditorContext.Provider
+      value={{ tabs, activeTab, openFile, closeTab, setActiveTab, reorderTabs, updateContent, saveFile, resolveConflict }}
+    >
+      {children}
+    </EditorContext.Provider>
+  )
+}
+
+export function useEditor(): EditorContextValue {
+  const ctx = useContext(EditorContext)
+  if (!ctx) throw new Error('useEditor must be used within EditorProvider')
+  return ctx
+}
