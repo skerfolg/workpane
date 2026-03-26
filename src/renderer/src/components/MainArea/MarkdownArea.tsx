@@ -116,18 +116,18 @@ function EditorArea(): React.JSX.Element {
     const tab = tabs.find((t) => t.id === tabId)
     return [
       {
-        label: '닫기',
+        label: 'Close',
         onClick: () => closeTab(tabId)
       },
       {
-        label: '다른 탭 모두 닫기',
+        label: 'Close Other Tabs',
         onClick: () => {
           tabs.filter((t) => t.id !== tabId).forEach((t) => closeTab(t.id))
         }
       },
       { label: '', onClick: () => {}, divider: true },
       {
-        label: '경로 복사',
+        label: 'Copy Path',
         onClick: () => {
           if (tab?.filePath) {
             navigator.clipboard.writeText(tab.filePath).catch(() => {})
@@ -181,7 +181,7 @@ function EditorArea(): React.JSX.Element {
         <div
           ref={tabBarRef}
           role="tablist"
-          aria-label="편집기 탭"
+          aria-label="Editor tabs"
           onWheel={handleTabBarWheel}
           style={{
             flex: 1,
@@ -360,7 +360,7 @@ function EditorArea(): React.JSX.Element {
             flexShrink: 0
           }}
         >
-          <span>파일이 외부에서 변경되었습니다.</span>
+          <span>File has been modified externally.</span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={() => resolveConflict(activeTab.id, 'reload')}
@@ -374,7 +374,7 @@ function EditorArea(): React.JSX.Element {
                 fontSize: 'var(--fs-sm)'
               }}
             >
-              새로고침
+              Reload
             </button>
             <button
               onClick={() => resolveConflict(activeTab.id, 'ignore')}
@@ -388,7 +388,7 @@ function EditorArea(): React.JSX.Element {
                 fontSize: 'var(--fs-sm)'
               }}
             >
-              무시
+              Ignore
             </button>
           </div>
         </div>
@@ -433,7 +433,7 @@ function EditorArea(): React.JSX.Element {
               fontSize: 'var(--fs-md)'
             }}
           >
-            파일을 열어주세요
+            Open a file
           </div>
         )}
       </div>

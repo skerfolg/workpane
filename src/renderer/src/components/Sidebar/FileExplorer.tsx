@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Folder, FolderOpen, File, ChevronRight, ChevronDown } from 'lucide-react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import ignore from 'ignore'
 import { useEditor } from '../../contexts/EditorContext'
 import { useKanban } from '../../contexts/KanbanContext'
@@ -34,6 +35,12 @@ interface FileExplorerProps {
   workspacePath: string
 }
 
+interface FlatNode {
+  node: TreeNode
+  depth: number
+  path: string
+}
+
 const EXT_ICONS: Record<string, React.ReactNode> = {
   '.ts': <File size={14} className="file-explorer__icon--ts" />,
   '.tsx': <File size={14} className="file-explorer__icon--ts" />,
@@ -60,113 +67,23 @@ function sortEntries(entries: DirEntry[]): DirEntry[] {
   return [...dirs, ...files]
 }
 
-function TreeNodeItem({
-  node,
-  depth,
-  onToggle,
-  onFileClick,
-  onContextMenu,
-  renameState,
-  onRenameChange,
-  onRenameCommit,
-  onRenameCancel
-}: {
-  node: TreeNode
-  depth: number
-  onToggle: (node: TreeNode) => void
-  onFileClick: (path: string) => void
-  onContextMenu: (e: React.MouseEvent, node: TreeNode) => void
-  renameState: RenameState | null
-  onRenameChange: (value: string) => void
-  onRenameCommit: () => void
-  onRenameCancel: () => void
-}): React.JSX.Element {
-  const isExpanded = node.children !== null
-  const isRenaming = renameState?.path === node.entry.path
-
-  const handleClick = (): void => {
-    if (node.entry.isDirectory) {
-      onToggle(node)
-    } else {
-      onFileClick(node.entry.path)
+function flattenTree(nodes: TreeNode[], depth = 0): FlatNode[] {
+  const result: FlatNode[] = []
+  for (const node of nodes) {
+    result.push({ node, depth, path: node.entry.path })
+    if (node.children) {
+      // Include loading placeholder as part of the parent node's expanded state
+      // Children are rendered as subsequent flat nodes
+      result.push(...flattenTree(node.children, depth + 1))
     }
   }
-
-  const handleRenameKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Enter') onRenameCommit()
-    if (e.key === 'Escape') onRenameCancel()
-  }
-
-  return (
-    <>
-      <div
-        className="file-explorer__node"
-        style={{ paddingLeft: `${depth * 16 + 4}px` }}
-        onClick={handleClick}
-        onContextMenu={(e) => onContextMenu(e, node)}
-        role="treeitem"
-        aria-expanded={node.entry.isDirectory ? isExpanded : undefined}
-      >
-        {node.entry.isDirectory ? (
-          <>
-            <span className="file-explorer__chevron">
-              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </span>
-            <span className="file-explorer__icon">
-              {isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />}
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="file-explorer__chevron file-explorer__chevron--spacer" />
-            <span className="file-explorer__icon">
-              {getFileIcon(node.entry.name)}
-            </span>
-          </>
-        )}
-        {isRenaming ? (
-          <input
-            className="file-explorer__rename-input"
-            value={renameState!.value}
-            autoFocus
-            onChange={(e) => onRenameChange(e.target.value)}
-            onBlur={onRenameCommit}
-            onKeyDown={handleRenameKeyDown}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span className="file-explorer__name">{node.entry.name}</span>
-        )}
-      </div>
-      {isExpanded && node.children && (
-        <div className="file-explorer__children">
-          {node.loading && (
-            <div className="file-explorer__loading" style={{ paddingLeft: `${(depth + 1) * 16 + 4}px` }}>
-              로딩 중...
-            </div>
-          )}
-          {node.children.map((child) => (
-            <TreeNodeItem
-              key={child.entry.path}
-              node={child}
-              depth={depth + 1}
-              onToggle={onToggle}
-              onFileClick={onFileClick}
-              onContextMenu={onContextMenu}
-              renameState={renameState}
-              onRenameChange={onRenameChange}
-              onRenameCommit={onRenameCommit}
-              onRenameCancel={onRenameCancel}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  )
+  return result
 }
 
+const ROW_HEIGHT = 24
+
 export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.Element {
-  const { openFile } = useEditor()
+  const { openFile, activeTab } = useEditor()
   const { issues: kanbanIssues, linkDocument, unlinkDocument } = useKanban()
 
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([])
@@ -177,11 +94,34 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
   const igRef = useRef(ignore())
   const recentRefreshRef = useRef<Set<string>>(new Set())
   const igPatternsRef = useRef<string[]>([])
+  const scrollParentRef = useRef<HTMLDivElement>(null)
 
   const [igPatterns, setIgPatterns] = useState<string[]>([])
 
   // Hardcoded dotfile names to always hide regardless of gitignore state
   const ALWAYS_HIDDEN = new Set(['.git', '.env', '.workspace', '.omc', '.claude', '.vs', '.vscode', '.idea'])
+
+  const activeFilePath = activeTab?.filePath ?? null
+
+  // Flatten tree for virtual rendering
+  const flatNodes = useMemo(() => flattenTree(rootNodes), [rootNodes])
+
+  const virtualizer = useVirtualizer({
+    count: flatNodes.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10
+  })
+
+  // Scroll to active file when it changes
+  useEffect(() => {
+    if (!activeFilePath) return
+    const normalizedActive = activeFilePath.replace(/\\/g, '/')
+    const idx = flatNodes.findIndex((fn) => fn.path.replace(/\\/g, '/') === normalizedActive)
+    if (idx >= 0) {
+      virtualizer.scrollToIndex(idx, { align: 'auto' })
+    }
+  }, [activeFilePath, flatNodes, virtualizer])
 
   const basicFilter = useCallback((entries: DirEntry[]): DirEntry[] => {
     return entries.filter((e) => {
@@ -396,7 +336,7 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
     const parentDir = contextMenu.node.entry.isDirectory
       ? contextMenu.node.entry.path
       : contextMenu.node.entry.path.replace(/\\/g, '/').split('/').slice(0, -1).join('/')
-    const name = window.prompt('새 파일 이름:')
+    const name = window.prompt('New file name:')
     if (!name?.trim()) { closeContextMenu(); return }
     try {
       await window.fs.writeFile(parentDir.replace(/\\/g, '/') + '/' + name.trim(), '')
@@ -412,7 +352,7 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
     const parentDir = contextMenu.node.entry.isDirectory
       ? contextMenu.node.entry.path
       : contextMenu.node.entry.path.replace(/\\/g, '/').split('/').slice(0, -1).join('/')
-    const name = window.prompt('새 폴더 이름:')
+    const name = window.prompt('New folder name:')
     if (!name?.trim()) { closeContextMenu(); return }
     try {
       await window.fs.mkdir(parentDir.replace(/\\/g, '/') + '/' + name.trim())
@@ -453,7 +393,7 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
   const handleDelete = useCallback(async (): Promise<void> => {
     if (!contextMenu) return
     const targetPath = contextMenu.node.entry.path
-    const confirmed = window.confirm(`"${contextMenu.node.entry.name}" 을(를) 삭제하시겠습니까?`)
+    const confirmed = window.confirm(`Delete "${contextMenu.node.entry.name}"?`)
     if (!confirmed) { closeContextMenu(); return }
     const parentDir = targetPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/')
     try {
@@ -498,25 +438,138 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
 
   const isLinked = contextMenu ? docPathToIssueId.has(contextMenu.node.entry.path) : false
 
+  const virtualItems = virtualizer.getVirtualItems()
+
   return (
-    <div className="file-explorer" role="tree" aria-label="파일 탐색기" onClick={closeContextMenu}>
+    <div
+      className="file-explorer"
+      role="tree"
+      aria-label="File Explorer"
+      onClick={closeContextMenu}
+      ref={scrollParentRef}
+    >
       {rootNodes.length === 0 && (
-        <div className="file-explorer__empty">파일 없음</div>
+        <div className="file-explorer__empty">No files</div>
       )}
-      {rootNodes.map((node) => (
-        <TreeNodeItem
-          key={node.entry.path}
-          node={node}
-          depth={0}
-          onToggle={handleToggle}
-          onFileClick={handleFileClick}
-          onContextMenu={handleContextMenu}
-          renameState={renameState}
-          onRenameChange={(value) => setRenameState((prev) => prev ? { ...prev, value } : null)}
-          onRenameCommit={handleRenameCommit}
-          onRenameCancel={handleRenameCancel}
-        />
-      ))}
+      {rootNodes.length > 0 && (
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative'
+          }}
+        >
+          {virtualItems.map((virtualRow) => {
+            const { node, depth } = flatNodes[virtualRow.index]
+            const isExpanded = node.children !== null
+            const isRenaming = renameState?.path === node.entry.path
+            const isActive = activeFilePath
+              ? node.entry.path.replace(/\\/g, '/') === activeFilePath.replace(/\\/g, '/')
+              : false
+
+            const handleClick = (): void => {
+              if (node.entry.isDirectory) {
+                handleToggle(node)
+              } else {
+                handleFileClick(node.entry.path)
+              }
+            }
+
+            const handleRenameKeyDown = (e: React.KeyboardEvent): void => {
+              if (e.key === 'Enter') handleRenameCommit()
+              if (e.key === 'Escape') handleRenameCancel()
+            }
+
+            // Show loading indicator for expanded directories that are loading
+            if (node.loading && node.children?.length === 0) {
+              return (
+                <div
+                  key={`loading-${node.entry.path}`}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`
+                  }}
+                >
+                  <div
+                    className="file-explorer__node"
+                    style={{ paddingLeft: `${depth * 16 + 4}px` }}
+                    onClick={handleClick}
+                    onContextMenu={(e) => handleContextMenu(e, node)}
+                    role="treeitem"
+                    aria-expanded={isExpanded}
+                  >
+                    <span className="file-explorer__chevron">
+                      <ChevronDown size={14} />
+                    </span>
+                    <span className="file-explorer__icon">
+                      <FolderOpen size={14} />
+                    </span>
+                    <span className="file-explorer__name">{node.entry.name}</span>
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <div
+                key={node.entry.path}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`
+                }}
+              >
+                <div
+                  className={`file-explorer__node${isActive ? ' file-explorer__node--active' : ''}`}
+                  style={{ paddingLeft: `${depth * 16 + 4}px` }}
+                  onClick={handleClick}
+                  onContextMenu={(e) => handleContextMenu(e, node)}
+                  role="treeitem"
+                  aria-expanded={node.entry.isDirectory ? isExpanded : undefined}
+                >
+                  {node.entry.isDirectory ? (
+                    <>
+                      <span className="file-explorer__chevron">
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </span>
+                      <span className="file-explorer__icon">
+                        {isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="file-explorer__chevron file-explorer__chevron--spacer" />
+                      <span className="file-explorer__icon">
+                        {getFileIcon(node.entry.name)}
+                      </span>
+                    </>
+                  )}
+                  {isRenaming ? (
+                    <input
+                      className="file-explorer__rename-input"
+                      value={renameState!.value}
+                      autoFocus
+                      onChange={(e) => setRenameState((prev) => prev ? { ...prev, value: e.target.value } : null)}
+                      onBlur={handleRenameCommit}
+                      onKeyDown={handleRenameKeyDown}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="file-explorer__name">{node.entry.name}</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {contextMenu && (
         <div
@@ -525,28 +578,28 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
           onClick={(e) => e.stopPropagation()}
         >
           <button className="file-explorer__context-item" onClick={handleNewFile}>
-            새 파일
+            New File
           </button>
           <button className="file-explorer__context-item" onClick={handleNewFolder}>
-            새 폴더
+            New Folder
           </button>
           <button className="file-explorer__context-item" onClick={handleRenameStart}>
-            이름 변경
+            Rename
           </button>
           <button
             className="file-explorer__context-item file-explorer__context-item--danger"
             onClick={handleDelete}
           >
-            삭제
+            Delete
           </button>
           <div className="file-explorer__context-separator" />
           {isLinked ? (
             <button className="file-explorer__context-item" onClick={handleUnlinkFromIssue}>
-              이슈 링크 해제
+              Unlink from Issue
             </button>
           ) : (
             <button className="file-explorer__context-item" onClick={handleLinkToIssue}>
-              이슈에 링크
+              Link to Issue
             </button>
           )}
         </div>

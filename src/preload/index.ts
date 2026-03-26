@@ -47,6 +47,7 @@ const workspaceAPI = {
 
 const fsAPI = {
   readFile: (path: string) => ipcRenderer.invoke('fs:read-file', path),
+  readFileStream: (path: string) => ipcRenderer.invoke('fs:read-file-stream', path),
   writeFile: (path: string, content: string) => ipcRenderer.invoke('fs:write-file', { path, content }),
   readDir: (dirPath: string) => ipcRenderer.invoke('fs:read-dir', dirPath),
   mkdir: (dirPath: string) => ipcRenderer.invoke('fs:mkdir', dirPath),

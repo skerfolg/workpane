@@ -206,6 +206,18 @@ ipcMain.handle('fs:read-file', (_event, filePath: string) => {
   return fs.promises.readFile(filePath, 'utf-8')
 })
 
+ipcMain.handle('fs:read-file-stream', async (_event, filePath: string) => {
+  assertWithinWorkspace(filePath, getWorkspaceRoot())
+  const perfStart = performance.now()
+  const chunks: string[] = []
+  const stream = fs.createReadStream(filePath, { encoding: 'utf-8', highWaterMark: 64 * 1024 })
+  for await (const chunk of stream) {
+    chunks.push(chunk as string)
+  }
+  console.log(`[PERF][Main] fs:read-file-stream ${filePath} ${(performance.now() - perfStart).toFixed(1)}ms`)
+  return chunks.join('')
+})
+
 ipcMain.handle('fs:write-file', (_event, { path: filePath, content }: { path: string; content: string }) => {
   assertWithinWorkspace(filePath, getWorkspaceRoot())
   return fs.promises.writeFile(filePath, content, 'utf-8')
@@ -360,7 +372,7 @@ ipcMain.handle('shell:open-external', async (_event, url: string) => {
 ipcMain.handle('theme:import', async () => {
   if (!mainWindow) return null
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: '테마 파일 가져오기',
+    title: 'Import theme file',
     filters: [
       { name: 'Theme Files', extensions: ['css', 'json'] }
     ],

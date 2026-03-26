@@ -100,6 +100,9 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
     return () => unsubscribe()
   }, [])
 
+  const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+  const STREAM_THRESHOLD = 1024 * 1024 // 1MB
+
   const openFile = useCallback(async (filePath: string) => {
     setTabs((prev) => {
       const existing = prev.find((t) => t.filePath === filePath)
@@ -113,7 +116,23 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
     if (alreadyOpen) return
 
     try {
-      const fileContent = await window.fs.readFile(filePath)
+      const perfStart = performance.now()
+      const stat = await window.fs.stat(filePath)
+
+      if (stat.size > MAX_FILE_SIZE) {
+        console.warn(`[PERF][Renderer] openFile: file too large (${stat.size} bytes), skipping`)
+        return
+      }
+
+      let fileContent: string
+      if (stat.size > STREAM_THRESHOLD) {
+        console.log(`[PERF][Renderer] openFile: large file (${stat.size} bytes), using stream`)
+        fileContent = await window.fs.readFileStream(filePath)
+      } else {
+        fileContent = await window.fs.readFile(filePath)
+      }
+      console.log(`[PERF][Renderer] openFile: loaded ${filePath} (${stat.size} bytes) in ${(performance.now() - perfStart).toFixed(1)}ms`)
+
       const title = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath
       const id = `tab-${++tabIdCounter}`
 

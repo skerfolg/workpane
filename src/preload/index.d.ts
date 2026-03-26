@@ -39,6 +39,7 @@ export interface DirEntry {
 
 export interface FsAPI {
   readFile: (path: string) => Promise<string>
+  readFileStream: (path: string) => Promise<string>
   writeFile: (path: string, content: string) => Promise<void>
   readDir: (dirPath: string) => Promise<DirEntry[]>
   mkdir: (dirPath: string) => Promise<void>
