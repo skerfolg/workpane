@@ -293,7 +293,7 @@ function AppInner(): React.JSX.Element {
             <input
               autoFocus
               type="text"
-              placeholder="워크스페이스 검색..."
+              placeholder="Search workspaces..."
               value={wsSwitcherSearch}
               onChange={(e) => setWsSwitcherSearch(e.target.value)}
               style={{
@@ -318,7 +318,7 @@ function AppInner(): React.JSX.Element {
                     fontSize: '13px'
                   }}
                 >
-                  최근 워크스페이스가 없습니다.
+                  No recent workspaces.
                 </div>
               ) : (
                 filteredRecent.map((wsPath) => {
@@ -383,7 +383,7 @@ function AppInner(): React.JSX.Element {
                   setWsSwitcherOpen(false)
                 }}
               >
-                + 폴더 열기
+                + Open Folder
               </button>
             </div>
           </div>

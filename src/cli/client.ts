@@ -60,7 +60,7 @@ export function sendRequest(method: string, params: Record<string, unknown> = {}
         clearTimeout(timer)
         settled = true
         if ((err as NodeJS.ErrnoException).code === 'ENOENT' || (err as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
-          reject(new Error('앱이 실행중이 아닙니다'))
+          reject(new Error('App is not running'))
         } else {
           reject(err)
         }

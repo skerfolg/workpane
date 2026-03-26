@@ -144,7 +144,7 @@ function makeInitialState(): TerminalState {
     groups: [
       {
         id: groupId,
-        name: '그룹 1',
+        name: 'Group 1',
         layoutTree: leaf,
         terminalIds: [],
         activeTerminalId: null,
@@ -377,7 +377,7 @@ function terminalGroupReducer(state: TerminalState, action: TerminalAction): Ter
         groups: [
           {
             id: groupId,
-            name: '그룹 1',
+            name: 'Group 1',
             layoutTree: { ...leaf, terminalIds: [action.id], activeTerminalId: action.id } as LayoutNode,
             terminalIds: [action.id],
             activeTerminalId: action.id,
@@ -736,7 +736,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
 
               const defaultGroup: TerminalGroup = {
                 id: 'group-1',
-                name: '그룹 1',
+                name: 'Group 1',
                 layoutTree,
                 terminalIds: restoredTerminals.map((t) => t.id),
                 activeTerminalId: savedState.activeTerminalId ?? restoredTerminals[0].id,
@@ -1028,7 +1028,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     const groupId = generateGroupId()
     const terminalId = generateId()
     const terminalName = `Terminal ${counterRef.current}`
-    const groupName = `그룹 ${groupCounterRef.current}`
+    const groupName = `Group ${groupCounterRef.current}`
 
     let cwd: string | undefined
     try {

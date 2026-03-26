@@ -39,7 +39,7 @@ export function UpdateNotification(): JSX.Element | null {
     >
       <Download size={16} style={{ color: 'var(--color-accent, #cba6f7)', flexShrink: 0 }} />
       <span style={{ fontSize: '13px', color: 'var(--color-text, #cdd6f4)', flex: 1 }}>
-        새 버전 {updateInfo.version}이 있습니다.{' '}
+        Version {updateInfo.version} is available.{' '}
         <a
           href={`https://github.com/releases`}
           onClick={(e) => {
@@ -48,7 +48,7 @@ export function UpdateNotification(): JSX.Element | null {
           }}
           style={{ color: 'var(--color-accent, #cba6f7)', textDecoration: 'underline', cursor: 'pointer' }}
         >
-          GitHub에서 다운로드
+          Download from GitHub
         </a>
       </span>
       <button

@@ -97,11 +97,11 @@ export function RecoveryDialog({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <AlertTriangle size={20} style={{ color: 'var(--color-warning, #ff9800)' }} />
-          <h3 style={{ margin: 0 }}>미저장 파일 복구</h3>
+          <h3 style={{ margin: 0 }}>Recover Unsaved Files</h3>
         </div>
 
         <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 16 }}>
-          이전 세션에서 저장되지 않은 파일이 {entries.length}개 발견되었습니다. 복구하시겠습니까?
+          {entries.length} unsaved file(s) found from previous session. Recover?
         </p>
 
         <div
@@ -151,7 +151,7 @@ export function RecoveryDialog({
                   {shortPath(entry.originalPath)}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  마지막 저장: {formatTime(entry.savedAt)}
+                  Last saved: {formatTime(entry.savedAt)}
                 </div>
               </div>
             </label>
@@ -160,14 +160,14 @@ export function RecoveryDialog({
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn--danger" onClick={handleDiscard} disabled={processing}>
-            삭제
+            Delete
           </button>
           <button
             className="btn btn--primary"
             onClick={handleRecover}
             disabled={processing || selected.size === 0}
           >
-            {processing ? '복구 중...' : `복구 (${selected.size})`}
+            {processing ? 'Recovering...' : `Recover (${selected.size})`}
           </button>
         </div>
       </div>

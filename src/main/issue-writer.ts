@@ -23,7 +23,7 @@ function toDateString(): string {
 function topicFromTitle(title: string): string {
   return title
     .toLowerCase()
-    .replace(/[^a-z0-9가-힣\s]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
     .trim()
     .replace(/\s+/g, '-')
     .slice(0, 40)
@@ -67,9 +67,9 @@ title: ${title}
 
 # ${title}
 
-## 설명
+## Description
 
-이슈 내용을 여기에 작성하세요.
+Write issue content here.
 `
 
   const filePath = join(issuesDir, filename)

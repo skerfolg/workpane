@@ -139,7 +139,7 @@ function TerminalArea(): React.JSX.Element {
         {/* Add terminal button — adds to the currently focused panel */}
         <button
           onClick={createTerminal}
-          title="새 터미널"
+          title="New Terminal"
           style={{
             background: 'none',
             border: 'none',
