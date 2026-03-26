@@ -59,7 +59,7 @@ function Sidebar({
                 onClick={() => setKanbanDocsSectionOpen((o) => !o)}
               >
                 <span className="sidebar__section-chevron">{kanbanDocsSectionOpen ? '▾' : '▶'}</span>
-                <span>칸반 이슈 문서</span>
+                <span>Kanban Issue Docs</span>
               </div>
               {kanbanDocsSectionOpen && <KanbanIssueDocTree />}
             </div>
@@ -70,7 +70,7 @@ function Sidebar({
                 onClick={() => setTerminalSectionOpen((o) => !o)}
               >
                 <span className="sidebar__section-chevron">{terminalSectionOpen ? '▾' : '▶'}</span>
-                <span>터미널</span>
+                <span>Terminal</span>
               </div>
               {terminalSectionOpen && <TerminalTree />}
             </div>
@@ -81,7 +81,7 @@ function Sidebar({
                 onClick={() => setFileExplorerSectionOpen((o) => !o)}
               >
                 <span className="sidebar__section-chevron">{fileExplorerSectionOpen ? '▾' : '▶'}</span>
-                <span>파일 탐색기</span>
+                <span>File Explorer</span>
               </div>
               {fileExplorerSectionOpen && currentWorkspace && (
                 <FileExplorer workspacePath={currentWorkspace.path} />

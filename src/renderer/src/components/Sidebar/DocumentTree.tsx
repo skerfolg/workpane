@@ -71,7 +71,7 @@ function ContextMenu({
           onClose()
         }}
       >
-        파일 열기
+        Open File
       </div>
       {state.isLinked && state.linkedIssueId ? (
         <div
@@ -81,7 +81,7 @@ function ContextMenu({
             onClose()
           }}
         >
-          링크 해제
+          Unlink
         </div>
       ) : (
         <div
@@ -91,7 +91,7 @@ function ContextMenu({
             onClose()
           }}
         >
-          이슈에 링크
+          Link to Issue
         </div>
       )}
     </div>
@@ -117,7 +117,7 @@ function DocEntryNode({
       title={entry.filePath}
     >
       <span className="doc-tree__status">{getDocIcon(entry.docType)}</span>
-      {isLinked && <span className="doc-tree__link-badge" title="이슈에 링크됨">{'\uD83D\uDD17'}</span>}
+      {isLinked && <span className="doc-tree__link-badge" title="Linked to issue">{'\uD83D\uDD17'}</span>}
       <span className="doc-tree__doc-type">{entry.docType}</span>
       <span className="doc-tree__title">{entry.title}</span>
       <span className="doc-tree__date">{entry.date}</span>
@@ -274,11 +274,11 @@ export function DocumentTree(): React.JSX.Element {
   const showProject = sourceFilter === null || sourceFilter === 'project'
 
   return (
-    <div className="doc-tree" role="tree" aria-label="문서 탐색기">
-      {loading && <div className="doc-tree__loading">로딩 중...</div>}
-      {error && <div className="doc-tree__error">오류: {error}</div>}
+    <div className="doc-tree" role="tree" aria-label="Document Explorer">
+      {loading && <div className="doc-tree__loading">Loading...</div>}
+      {error && <div className="doc-tree__error">Error: {error}</div>}
       {!loading && !error && groups.length === 0 && (
-        <div className="doc-tree__empty">문서가 없습니다</div>
+        <div className="doc-tree__empty">No documents</div>
       )}
       {showStandard && standardGroups.length > 0 && (
         <SourceSection

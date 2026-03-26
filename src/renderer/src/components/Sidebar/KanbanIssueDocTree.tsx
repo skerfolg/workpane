@@ -74,13 +74,13 @@ export function KanbanIssueDocTree(): React.JSX.Element {
   if (issuesWithDocs.length === 0) {
     return (
       <div className="kanban-doc-tree">
-        <p className="kanban-doc-tree__empty">링크된 문서가 있는 이슈가 없습니다</p>
+        <p className="kanban-doc-tree__empty">No issues with linked documents</p>
       </div>
     )
   }
 
   return (
-    <div className="kanban-doc-tree" role="tree" aria-label="이슈별 링크된 문서">
+    <div className="kanban-doc-tree" role="tree" aria-label="Documents linked by issue">
       {issuesWithDocs.map((issue) => (
         <IssueGroup
           key={issue.id}

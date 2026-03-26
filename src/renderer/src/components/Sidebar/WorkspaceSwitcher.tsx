@@ -90,7 +90,7 @@ function WorkspaceSwitcher({
               ref={searchRef}
               className="ws-switcher__search-input"
               type="text"
-              placeholder="워크스페이스 검색..."
+              placeholder="Search workspaces..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -98,7 +98,7 @@ function WorkspaceSwitcher({
 
           <div className="ws-switcher__list">
             {filtered.length === 0 ? (
-              <div className="ws-switcher__empty">검색 결과 없음</div>
+              <div className="ws-switcher__empty">No results found</div>
             ) : (
               filtered.map((wsPath) => {
                 const isActive = currentWorkspace?.path === wsPath

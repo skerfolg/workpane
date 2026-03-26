@@ -133,11 +133,11 @@ export function IssueTree(): React.JSX.Element {
   const showProject = sourceFilter === null || sourceFilter === 'project'
 
   return (
-    <div className="issue-tree" role="tree" aria-label="문서 그룹">
-      {loading && <div className="issue-tree__loading">로딩 중...</div>}
-      {error && <div className="issue-tree__error">오류: {error}</div>}
+    <div className="issue-tree" role="tree" aria-label="Document Groups">
+      {loading && <div className="issue-tree__loading">Loading...</div>}
+      {error && <div className="issue-tree__error">Error: {error}</div>}
       {!loading && !error && groups.length === 0 && (
-        <div className="issue-tree__empty">문서가 없습니다</div>
+        <div className="issue-tree__empty">No documents</div>
       )}
       {showStandard && standardGroups.length > 0 && (
         <SourceSection label="Standard Docs" groups={standardGroups} onOpen={handleOpen} />

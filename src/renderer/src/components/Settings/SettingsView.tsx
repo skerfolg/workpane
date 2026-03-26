@@ -108,15 +108,15 @@ export default function SettingsView(): React.JSX.Element {
       <div className="settings-view__search">
         <input
           type="text"
-          placeholder="설정 검색..."
+          placeholder="Search settings..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
       <div className="settings-view__content">
-        {(visible('language') || visible('auto save') || visible('자동저장') || visible('언어') || !q) && (
+        {(visible('language') || visible('auto save') || visible('Korean') || !q) && (
           <Section title="General">
-            {visible('language') || visible('언어') || !q ? (
+            {visible('language') || visible('Korean') || !q ? (
               <div className="settings-row">
                 <span className="settings-row__label">Language</span>
                 <div className="settings-row__control">
@@ -125,12 +125,12 @@ export default function SettingsView(): React.JSX.Element {
                     onChange={(e) => setSetting('general', 'language', e.target.value)}
                   >
                     <option value="en">English</option>
-                    <option value="ko">한국어</option>
+                    <option value="ko">Korean</option>
                   </select>
                 </div>
               </div>
             ) : null}
-            {visible('auto save') || visible('자동저장') || !q ? (
+            {visible('auto save') || !q ? (
               <div className="settings-row">
                 <span className="settings-row__label">Auto Save</span>
                 <div className="settings-row__control">
@@ -142,7 +142,7 @@ export default function SettingsView(): React.JSX.Element {
                 </div>
               </div>
             ) : null}
-            {visible('auto save interval') || visible('저장 간격') || !q ? (
+            {visible('auto save interval') || visible('save interval') || !q ? (
               <div className="settings-row">
                 <span className="settings-row__label">Auto Save Interval (ms)</span>
                 <div className="settings-row__control">
@@ -159,9 +159,9 @@ export default function SettingsView(): React.JSX.Element {
           </Section>
         )}
 
-        {(visible('theme') || visible('테마') || !q) && (
+        {(visible('theme') || !q) && (
           <Section title="Appearance">
-            {visible('theme') || visible('테마') || !q ? (
+            {visible('theme') || !q ? (
               <div className="settings-row">
                 <span className="settings-row__label">Theme</span>
                 <div className="settings-row__control">
@@ -177,17 +177,17 @@ export default function SettingsView(): React.JSX.Element {
               </div>
             ) : null}
             <div className="settings-row">
-              <span className="settings-row__label">테마 파일 가져오기</span>
+              <span className="settings-row__label">Import Theme File</span>
               <div className="settings-row__control">
                 <button className="settings-btn settings-btn--secondary" onClick={handleImportTheme}>
-                  테마 파일 가져오기
+                  Import Theme File
                 </button>
               </div>
             </div>
           </Section>
         )}
 
-        {(visible('shell') || visible('font') || visible('terminal') || visible('터미널') || !q) && (
+        {(visible('shell') || visible('font') || visible('terminal') || !q) && (
           <Section title="Terminal">
             {visible('shell') || visible('default shell') || !q ? (
               <div className="settings-row">
@@ -230,7 +230,7 @@ export default function SettingsView(): React.JSX.Element {
           </Section>
         )}
 
-        {(visible('editor') || visible('font') || visible('word wrap') || visible('tab size') || visible('에디터') || !q) && (
+        {(visible('editor') || visible('font') || visible('word wrap') || visible('tab size') || !q) && (
           <Section title="Editor">
             {visible('font size') || visible('editor') || !q ? (
               <div className="settings-row">
@@ -246,7 +246,7 @@ export default function SettingsView(): React.JSX.Element {
                 </div>
               </div>
             ) : null}
-            {visible('word wrap') || visible('줄바꿈') || !q ? (
+            {visible('word wrap') || !q ? (
               <div className="settings-row">
                 <span className="settings-row__label">Word Wrap</span>
                 <div className="settings-row__control">
@@ -258,7 +258,7 @@ export default function SettingsView(): React.JSX.Element {
                 </div>
               </div>
             ) : null}
-            {visible('tab size') || visible('탭') || !q ? (
+            {visible('tab size') || visible('tab') || !q ? (
               <div className="settings-row">
                 <span className="settings-row__label">Tab Size</span>
                 <div className="settings-row__control">
@@ -275,9 +275,9 @@ export default function SettingsView(): React.JSX.Element {
           </Section>
         )}
 
-        {(visible('workspace') || visible('default path') || visible('워크스페이스') || !q) && (
+        {(visible('workspace') || visible('default path') || !q) && (
           <Section title="Workspace">
-            {visible('default path') || visible('기본 경로') || !q ? (
+            {visible('default path') || !q ? (
               <div className="settings-row">
                 <span className="settings-row__label">Default Path</span>
                 <div className="settings-row__control">

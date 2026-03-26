@@ -70,13 +70,13 @@ export function SkillsSettings({ workspacePath }: SkillsSettingsProps): JSX.Elem
 
       {!workspacePath && (
         <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>
-          워크스페이스를 열면 스킬을 관리할 수 있습니다.
+          Open a workspace to manage skills.
         </p>
       )}
 
       {installed.length > 0 && (
         <section style={{ marginBottom: 24 }}>
-          <h4 style={{ marginBottom: 8 }}>설치된 스킬</h4>
+          <h4 style={{ marginBottom: 8 }}>Installed Skills</h4>
           <div className="skill-list">
             {installed.map((skill) => (
               <div key={skill.name} className="skill-item skill-item--installed">
@@ -89,25 +89,25 @@ export function SkillsSettings({ workspacePath }: SkillsSettingsProps): JSX.Elem
                 </div>
                 {pendingUninstall === skill.name ? (
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <span style={{ fontSize: 12, alignSelf: 'center' }}>정말 삭제?</span>
+                    <span style={{ fontSize: 12, alignSelf: 'center' }}>Confirm delete?</span>
                     <button
                       className="btn btn--danger btn--sm"
                       disabled={loading}
                       onClick={() => handleUninstall(skill.name)}
                     >
-                      삭제
+                      Delete
                     </button>
                     <button
                       className="btn btn--sm"
                       onClick={() => setPendingUninstall(null)}
                     >
-                      취소
+                      Cancel
                     </button>
                   </div>
                 ) : (
                   <button
                     className="btn btn--icon"
-                    title="제거"
+                    title="Remove"
                     disabled={loading || !workspacePath}
                     onClick={() => setPendingUninstall(skill.name)}
                   >
@@ -121,9 +121,9 @@ export function SkillsSettings({ workspacePath }: SkillsSettingsProps): JSX.Elem
       )}
 
       <section>
-        <h4 style={{ marginBottom: 8 }}>사용 가능한 스킬</h4>
+        <h4 style={{ marginBottom: 8 }}>Available Skills</h4>
         {available.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>사용 가능한 스킬이 없습니다.</p>
+          <p style={{ color: 'var(--text-muted)' }}>No available skills.</p>
         ) : (
           <div className="skill-list">
             {available.map((skill) => {
@@ -143,9 +143,9 @@ export function SkillsSettings({ workspacePath }: SkillsSettingsProps): JSX.Elem
                     onClick={() => handleInstall(skill.name)}
                   >
                     {isInstalled ? (
-                      <><CheckCircle size={12} /> 설치됨</>
+                      <><CheckCircle size={12} /> Installed</>
                     ) : (
-                      <><Download size={12} /> 설치</>
+                      <><Download size={12} /> Install</>
                     )}
                   </button>
                 </div>

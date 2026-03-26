@@ -79,11 +79,11 @@ export function SkillInstallDialog({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <Package size={20} />
-          <h3 style={{ margin: 0 }}>스킬 설치</h3>
+          <h3 style={{ margin: 0 }}>Install Skills</h3>
         </div>
 
         <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14 }}>
-          <strong>{workspacePath.split(/[/\\]/).pop()}</strong> 워크스페이스에 스킬을 설치하시겠습니까?
+          Install skills to this workspace? (<strong>{workspacePath.split(/[/\\]/).pop()}</strong>)
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
@@ -124,14 +124,14 @@ export function SkillInstallDialog({
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn" onClick={onSkip} disabled={installing}>
-            건너뛰기
+            Skip
           </button>
           <button
             className="btn btn--primary"
             onClick={handleInstall}
             disabled={installing || selected.size === 0}
           >
-            {installing ? '설치 중...' : `설치 (${selected.size})`}
+            {installing ? 'Installing...' : `Install (${selected.size})`}
           </button>
         </div>
       </div>
