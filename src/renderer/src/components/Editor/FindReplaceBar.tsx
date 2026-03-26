@@ -129,7 +129,7 @@ function FindReplaceBar({ content, onReplace, onClose, mode }: FindReplaceBarPro
           ref={findInputRef}
           className={`find-replace-bar__input${regexError ? ' find-replace-bar__input--error' : ''}`}
           type="text"
-          placeholder="찾기"
+          placeholder="Find"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -140,35 +140,35 @@ function FindReplaceBar({ content, onReplace, onClose, mode }: FindReplaceBarPro
 
         <button
           className={`find-replace-bar__opt-btn${caseSensitive ? ' active' : ''}`}
-          title="대소문자 구분 (Aa)"
+          title="Match Case (Aa)"
           onClick={() => setCaseSensitive((v) => !v)}
         >
           Aa
         </button>
         <button
           className={`find-replace-bar__opt-btn${useRegex ? ' active' : ''}`}
-          title="정규식 사용 (.*)"
+          title="Use Regex (.*)"
           onClick={() => setUseRegex((v) => !v)}
         >
           .*
         </button>
 
-        <button className="find-replace-bar__nav-btn" title="이전 (Shift+Enter)" onClick={goPrev}>
+        <button className="find-replace-bar__nav-btn" title="Previous (Shift+Enter)" onClick={goPrev}>
           &#8593;
         </button>
-        <button className="find-replace-bar__nav-btn" title="다음 (Enter)" onClick={goNext}>
+        <button className="find-replace-bar__nav-btn" title="Next (Enter)" onClick={goNext}>
           &#8595;
         </button>
 
         <button
           className={`find-replace-bar__opt-btn${isReplaceMode ? ' active' : ''}`}
-          title="바꾸기 모드 전환"
+          title="Toggle Replace Mode"
           onClick={() => setIsReplaceMode((v) => !v)}
         >
           ⇄
         </button>
 
-        <button className="find-replace-bar__close-btn" title="닫기 (Esc)" onClick={onClose}>
+        <button className="find-replace-bar__close-btn" title="Close (Esc)" onClick={onClose}>
           ×
         </button>
       </div>
@@ -179,15 +179,15 @@ function FindReplaceBar({ content, onReplace, onClose, mode }: FindReplaceBarPro
           <input
             className="find-replace-bar__input"
             type="text"
-            placeholder="바꿀 텍스트"
+            placeholder="Replace text"
             value={replacement}
             onChange={(e) => setReplacement(e.target.value)}
           />
           <button className="find-replace-bar__action-btn" onClick={replaceCurrent}>
-            바꾸기
+            Replace
           </button>
           <button className="find-replace-bar__action-btn" onClick={replaceAll}>
-            전체 바꾸기
+            Replace All
           </button>
         </div>
       )}

@@ -139,13 +139,13 @@ export function TerminalTree(): React.JSX.Element {
         <button
           className="terminal-tree__add-btn"
           onClick={(e) => { e.stopPropagation(); createGroup() }}
-          title="새 그룹"
+          title="New Group"
         >
-          + 새 그룹
+          + New Group
         </button>
       </div>
 
-      <ul className="terminal-tree__list" role="tree" aria-label="터미널 그룹 목록">
+      <ul className="terminal-tree__list" role="tree" aria-label="Terminal group list">
         {groups.map((group) => {
           const isActive = group.id === activeGroupId
           const groupTerminals = getGroupTerminals(group)
@@ -221,7 +221,7 @@ export function TerminalTree(): React.JSX.Element {
                         className="terminal-tree__add-btn terminal-tree__add-btn--small"
                         onClick={(e) => { e.stopPropagation(); createTerminal() }}
                       >
-                        + 새 터미널
+                        + New Terminal
                       </button>
                     </li>
                   )}
@@ -247,13 +247,13 @@ export function TerminalTree(): React.JSX.Element {
                   if (g) startRename('group', g.id, g.name)
                 }}
               >
-                이름 변경
+                Rename
               </button>
               <button
                 className="terminal-tree__context-item terminal-tree__context-item--danger"
                 onClick={() => { deleteGroup(contextMenu.id); closeContextMenu() }}
               >
-                그룹 삭제
+                Delete Group
               </button>
             </>
           ) : (
@@ -262,7 +262,7 @@ export function TerminalTree(): React.JSX.Element {
                 className="terminal-tree__context-item"
                 onClick={() => { createTerminal(); closeContextMenu() }}
               >
-                새 터미널
+                New Terminal
               </button>
               <button
                 className="terminal-tree__context-item"
@@ -271,13 +271,13 @@ export function TerminalTree(): React.JSX.Element {
                   if (t) startRename('terminal', t.id, t.name)
                 }}
               >
-                이름 변경
+                Rename
               </button>
               <button
                 className="terminal-tree__context-item terminal-tree__context-item--danger"
                 onClick={() => { removeTerminal(contextMenu.id); closeContextMenu() }}
               >
-                삭제
+                Delete
               </button>
             </>
           )}

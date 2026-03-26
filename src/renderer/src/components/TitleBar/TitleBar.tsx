@@ -74,27 +74,27 @@ export default function TitleBar({
           <button
             className={`titlebar-toggle ${sidebarVisible ? 'active' : ''}`}
             onClick={onToggleSidebar}
-            title="사이드바 토글 (Ctrl+B)"
+            title="Toggle Sidebar (Ctrl+B)"
           >
             <PanelLeft size={14} />
           </button>
           <button
             className={`titlebar-toggle ${editorVisible ? 'active' : ''}`}
             onClick={onToggleEditor}
-            title="에디터 토글"
+            title="Toggle Editor"
           >
             <FileText size={14} />
           </button>
           <button
             className={`titlebar-toggle ${terminalVisible ? 'active' : ''}`}
             onClick={onToggleTerminal}
-            title="터미널 토글"
+            title="Toggle Terminal"
           >
             <TerminalSquare size={14} />
           </button>
           <button
             className="titlebar-toggle"
-            title="알림"
+            title="Notifications"
             disabled
           >
             <Bell size={14} />
@@ -102,13 +102,13 @@ export default function TitleBar({
         </div>
 
         <div className="titlebar-window-controls">
-          <button className="titlebar-btn titlebar-btn-minimize" onClick={handleMinimize} title="최소화">
+          <button className="titlebar-btn titlebar-btn-minimize" onClick={handleMinimize} title="Minimize">
             <Minus size={14} />
           </button>
-          <button className="titlebar-btn titlebar-btn-maximize" onClick={handleMaximize} title={isMaximized ? '이전 크기로 복원' : '최대화'}>
+          <button className="titlebar-btn titlebar-btn-maximize" onClick={handleMaximize} title={isMaximized ? 'Restore' : 'Maximize'}>
             {isMaximized ? <Copy size={12} /> : <Square size={12} />}
           </button>
-          <button className="titlebar-btn titlebar-btn-close" onClick={handleClose} title="닫기">
+          <button className="titlebar-btn titlebar-btn-close" onClick={handleClose} title="Close">
             <X size={14} />
           </button>
         </div>

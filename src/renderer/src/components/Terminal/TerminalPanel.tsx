@@ -96,34 +96,34 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
     const activeTerm = activeTermId ? terminals.find((t) => t.id === activeTermId) : null
     return [
       {
-        label: '수직 분할',
+        label: 'Split Vertical',
         shortcut: 'Ctrl+\\',
         onClick: () => splitPanel(node.panelId, 'vertical')
       },
       {
-        label: '수평 분할',
+        label: 'Split Horizontal',
         shortcut: 'Ctrl+Shift+\\',
         onClick: () => splitPanel(node.panelId, 'horizontal')
       },
       { label: '', onClick: () => {}, divider: true },
       {
-        label: '패널 닫기',
+        label: 'Close Panel',
         onClick: () => closePanel(node.panelId),
         danger: true
       },
       { label: '', onClick: () => {}, divider: true },
       {
-        label: '터미널 이름 변경',
+        label: 'Rename Terminal',
         onClick: () => {
           if (!activeTermId) return
-          const newName = prompt('새 이름을 입력하세요:', activeTerm?.name ?? '')
+          const newName = prompt('Enter new name:', activeTerm?.name ?? '')
           if (newName && newName.trim()) {
             renameTerminal(activeTermId, newName.trim())
           }
         }
       },
       {
-        label: '터미널 닫기',
+        label: 'Close Terminal',
         onClick: () => {
           if (activeTermId) removeTerminal(activeTermId)
         },
@@ -248,7 +248,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
       <div
         className="terminal-panel__tab-bar"
         role="tablist"
-        aria-label="터미널 탭"
+        aria-label="Terminal tabs"
         onContextMenu={handleTabBarContextMenu}
         onDragOver={handleTabBarDragOver}
         onDragLeave={handleTabBarDragLeave}
@@ -304,7 +304,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
               <span>{terminal.name}</span>
               <button
                 onClick={(e) => handleTabClose(e, terminal.id)}
-                title="터미널 닫기"
+                title="Close Terminal"
                 style={{
                   background: 'none',
                   border: 'none',
@@ -329,7 +329,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
 
         {panelTerminals.length === 0 && (
           <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', paddingLeft: '4px' }}>
-            비어 있음
+            Empty
           </span>
         )}
       </div>
@@ -369,7 +369,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
               fontSize: '13px'
             }}
           >
-            터미널이 없습니다.
+            No terminals.
           </div>
         )}
       </div>

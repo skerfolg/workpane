@@ -11,7 +11,7 @@ function Breadcrumb({ filePath }: BreadcrumbProps): React.JSX.Element {
   const segments = normalized.split('/').filter(Boolean)
 
   return (
-    <div className="breadcrumb" aria-label="파일 경로">
+    <div className="breadcrumb" aria-label="File path">
       {segments.map((segment, index) => {
         const isLast = index === segments.length - 1
         return (

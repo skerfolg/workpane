@@ -30,7 +30,7 @@ function Welcome({ recentWorkspaces, onOpen, onOpenPath }: WelcomeProps): React.
         <div className="welcome__recent-title">{t('workspace.recent')}</div>
         <div className="welcome__recent-list">
           {recentWorkspaces.length === 0 ? (
-            <div className="welcome__recent-empty">최근 워크스페이스가 없습니다.</div>
+            <div className="welcome__recent-empty">No recent workspaces.</div>
           ) : (
             recentWorkspaces.map((wsPath) => (
               <button
