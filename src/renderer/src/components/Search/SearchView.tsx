@@ -155,13 +155,13 @@ export function SearchView(): React.JSX.Element {
   const sortedCategories = categoryOrder.filter((c) => groups[c])
 
   return (
-    <div className="search-view" role="search" aria-label="파일 검색">
+    <div className="search-view" role="search" aria-label="File Search">
       {/* Search input */}
       <div className="search-view__input-row">
         <input
           className="search-view__input"
           type="text"
-          placeholder="검색어 입력 후 Enter"
+          placeholder="Type and press Enter to search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -186,13 +186,13 @@ export function SearchView(): React.JSX.Element {
       {loading && (
         <div className="search-view__loading">
           <span className="search-view__spinner" />
-          검색 중...
+          Searching...
         </div>
       )}
 
       {/* Results */}
       {!loading && searched && results.length === 0 && (
-        <div className="search-view__empty">검색 결과 없음</div>
+        <div className="search-view__empty">No results found</div>
       )}
 
       {!loading && results.length > 0 && (
@@ -244,7 +244,7 @@ export function SearchView(): React.JSX.Element {
         <input
           className="search-view__input"
           type="text"
-          placeholder="대체 텍스트"
+          placeholder="Replace text"
           value={replacement}
           onChange={(e) => setReplacement(e.target.value)}
           disabled={replacing}
@@ -254,7 +254,7 @@ export function SearchView(): React.JSX.Element {
           onClick={handleReplaceAll}
           disabled={!query.trim() || results.length === 0 || replacing}
         >
-          {replacing ? '바꾸는 중...' : '전체 바꾸기'}
+          {replacing ? 'Replacing...' : 'Replace All'}
         </button>
       </div>
     </div>

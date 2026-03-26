@@ -54,7 +54,7 @@ export function KanbanColumn({ status, label, issues, onOpenModal }: KanbanColum
         className="kanban-column__add-btn"
         onClick={() => onOpenModal(null, status)}
       >
-        + 새 이슈
+        + New Issue
       </button>
     </div>
   )

@@ -68,7 +68,7 @@ export function IssueModal({ issue, initialStatus, onClose }: IssueModalProps): 
 
   const handleDelete = useCallback(async (): Promise<void> => {
     if (!issue) return
-    if (!confirm(`이슈를 삭제하시겠습니까?\n${issue.title}`)) return
+    if (!confirm(`Delete this issue?\n${issue.title}`)) return
     await deleteIssue(issue.filePath)
     onClose()
   }, [issue, deleteIssue, onClose])
@@ -95,7 +95,7 @@ export function IssueModal({ issue, initialStatus, onClose }: IssueModalProps): 
         <div className="issue-modal__header">
           <div className="issue-modal__header-left">
             {issue && <span className="issue-modal__hash">#{issue.hash}</span>}
-            <span id="issue-modal-title" className="issue-modal__mode-label">{isCreateMode ? '새 이슈' : '이슈 편집'}</span>
+            <span id="issue-modal-title" className="issue-modal__mode-label">{isCreateMode ? 'New Issue' : 'Edit Issue'}</span>
           </div>
           <div className="issue-modal__header-controls">
             <select
@@ -143,7 +143,7 @@ export function IssueModal({ issue, initialStatus, onClose }: IssueModalProps): 
         <div className="issue-modal__title-row">
           <input
             className="issue-modal__title-input"
-            placeholder="이슈 제목"
+            placeholder="Issue title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -155,14 +155,14 @@ export function IssueModal({ issue, initialStatus, onClose }: IssueModalProps): 
               className="issue-modal__content"
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="마크다운 내용을 입력하세요..."
+              placeholder="Enter markdown content..."
             />
           </div>
         )}
 
         {!isCreateMode && (
           <div className="issue-modal__sub-issues">
-            <div className="issue-modal__sub-title">서브 이슈 ({subIssues.length})</div>
+            <div className="issue-modal__sub-title">Sub Issues ({subIssues.length})</div>
             {subIssues.map((sub) => (
               <label key={sub.filePath} className="issue-modal__sub-item">
                 <input
@@ -185,24 +185,24 @@ export function IssueModal({ issue, initialStatus, onClose }: IssueModalProps): 
             {!isCreateMode && (
               <>
                 <button className="issue-modal__btn issue-modal__btn--secondary" onClick={handleOpenInEditor}>
-                  마크다운으로 열기
+                  Open as Markdown
                 </button>
                 <button className="issue-modal__btn issue-modal__btn--danger" onClick={handleDelete}>
-                  삭제
+                  Delete
                 </button>
               </>
             )}
           </div>
           <div className="issue-modal__footer-right">
             <button className="issue-modal__btn issue-modal__btn--secondary" onClick={onClose}>
-              취소
+              Cancel
             </button>
             <button
               className="issue-modal__btn issue-modal__btn--primary"
               onClick={handleSave}
               disabled={saving || !title.trim()}
             >
-              {saving ? '저장 중...' : '저장'}
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>

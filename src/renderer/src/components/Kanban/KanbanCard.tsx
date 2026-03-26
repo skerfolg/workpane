@@ -35,7 +35,7 @@ export function KanbanCard({ issue, onOpenModal }: KanbanCardProps): React.JSX.E
       <div className="kanban-card__meta">
         <span className="kanban-card__hash">#{issue.id.slice(0, 6)}</span>
         {linkedCount > 0 && (
-          <span className="kanban-card__linked">{linkedCount} 문서</span>
+          <span className="kanban-card__linked">{linkedCount} docs</span>
         )}
       </div>
     </div>

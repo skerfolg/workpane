@@ -35,16 +35,16 @@ export function LinkDocumentDialog({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="이슈에 문서 링크"
+        aria-label="Link document to issue"
       >
         <div className="link-doc-dialog__header">
-          <span className="link-doc-dialog__title">이슈에 링크</span>
-          <button className="link-doc-dialog__close" onClick={onCancel} aria-label="닫기">
+          <span className="link-doc-dialog__title">Link to Issue</span>
+          <button className="link-doc-dialog__close" onClick={onCancel} aria-label="Close">
             &times;
           </button>
         </div>
         <div className="link-doc-dialog__doc-info">
-          <span className="link-doc-dialog__doc-label">문서:</span>
+          <span className="link-doc-dialog__doc-label">Document:</span>
           <span className="link-doc-dialog__doc-title" title={docEntry.filePath}>
             {docEntry.title}
           </span>
@@ -53,7 +53,7 @@ export function LinkDocumentDialog({
           <input
             className="link-doc-dialog__search"
             type="text"
-            placeholder="이슈 검색..."
+            placeholder="Search issues..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             autoFocus
@@ -61,7 +61,7 @@ export function LinkDocumentDialog({
         </div>
         <div className="link-doc-dialog__list">
           {filtered.length === 0 ? (
-            <div className="link-doc-dialog__empty">이슈가 없습니다</div>
+            <div className="link-doc-dialog__empty">No issues found</div>
           ) : (
             filtered.map((issue) => (
               <div
@@ -77,14 +77,14 @@ export function LinkDocumentDialog({
         </div>
         <div className="link-doc-dialog__footer">
           <button className="link-doc-dialog__btn link-doc-dialog__btn--cancel" onClick={onCancel}>
-            취소
+            Cancel
           </button>
           <button
             className="link-doc-dialog__btn link-doc-dialog__btn--confirm"
             onClick={() => selectedId && onConfirm(selectedId)}
             disabled={!selectedId}
           >
-            링크
+            Link
           </button>
         </div>
       </div>

@@ -49,11 +49,11 @@ export function PromptGenerator({ issueId }: PromptGeneratorProps): React.JSX.El
   return (
     <div className="prompt-gen">
       <div className="prompt-gen__header">
-        <span className="prompt-gen__title">프롬프트 생성기</span>
+        <span className="prompt-gen__title">Prompt Generator</span>
       </div>
       <div className="prompt-gen__template-row">
         <label className="prompt-gen__label" htmlFor="prompt-template-select">
-          템플릿
+          Template
         </label>
         <select
           id="prompt-template-select"
@@ -67,17 +67,17 @@ export function PromptGenerator({ issueId }: PromptGeneratorProps): React.JSX.El
             </option>
           ))}
           {promptTemplates.length === 0 && (
-            <option value="">템플릿 없음</option>
+            <option value="">No templates</option>
           )}
         </select>
       </div>
       <div className="prompt-gen__preview">
         {generating ? (
-          <div className="prompt-gen__generating">생성 중...</div>
+          <div className="prompt-gen__generating">Generating...</div>
         ) : prompt ? (
           <pre className="prompt-gen__content">{prompt}</pre>
         ) : (
-          <div className="prompt-gen__empty">프롬프트를 생성해주세요</div>
+          <div className="prompt-gen__empty">Generate a prompt</div>
         )}
       </div>
       <div className="prompt-gen__actions">
@@ -86,14 +86,14 @@ export function PromptGenerator({ issueId }: PromptGeneratorProps): React.JSX.El
           onClick={handleCopy}
           disabled={!prompt || generating}
         >
-          {copied ? '복사됨!' : '클립보드 복사'}
+          {copied ? 'Copied!' : 'Copy to clipboard'}
         </button>
         <button
           className="prompt-gen__btn prompt-gen__btn--regen"
           onClick={handleGenerate}
           disabled={!selectedTemplateId || generating}
         >
-          재생성
+          Regenerate
         </button>
       </div>
     </div>

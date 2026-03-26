@@ -56,7 +56,7 @@ export function KanbanBoard(): React.JSX.Element {
   if (loading) {
     return (
       <div className="kanban-board">
-        <div className="kanban-board__loading">로딩 중...</div>
+        <div className="kanban-board__loading">Loading...</div>
       </div>
     )
   }
@@ -74,14 +74,14 @@ export function KanbanBoard(): React.JSX.Element {
       {/* Toolbar */}
       <div className="kanban-board__toolbar">
         <div className="kanban-board__sort">
-          <label className="kanban-board__sort-label">정렬:</label>
+          <label className="kanban-board__sort-label">Sort:</label>
           <select
             className="kanban-board__sort-select"
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
           >
-            <option value="date">날짜</option>
-            <option value="title">제목</option>
+            <option value="date">Date</option>
+            <option value="title">Title</option>
           </select>
         </div>
       </div>

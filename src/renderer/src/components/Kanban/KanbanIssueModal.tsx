@@ -64,7 +64,7 @@ export function KanbanIssueModal({ issue, initialStatus, onClose }: KanbanIssueM
           <div className="issue-modal__header-left">
             {issue && <span className="issue-modal__hash">#{issue.id.slice(0, 6)}</span>}
             <span id="issue-modal-title" className="issue-modal__mode-label">
-              {isCreateMode ? '새 이슈' : '이슈 편집'}
+              {isCreateMode ? 'New Issue' : 'Edit Issue'}
             </span>
           </div>
           <div className="issue-modal__header-controls">
@@ -84,7 +84,7 @@ export function KanbanIssueModal({ issue, initialStatus, onClose }: KanbanIssueM
         <div className="issue-modal__title-row">
           <input
             className="issue-modal__title-input"
-            placeholder="이슈 제목"
+            placeholder="Issue title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -95,7 +95,7 @@ export function KanbanIssueModal({ issue, initialStatus, onClose }: KanbanIssueM
             className="issue-modal__content"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="이슈 설명을 입력하세요..."
+            placeholder="Enter issue description..."
           />
         </div>
 
@@ -105,7 +105,7 @@ export function KanbanIssueModal({ issue, initialStatus, onClose }: KanbanIssueM
 
         {!isCreateMode && issue && issue.linkedDocuments.length > 0 && (
           <div className="issue-modal__sub-issues">
-            <div className="issue-modal__sub-title">연결된 문서 ({issue.linkedDocuments.length})</div>
+            <div className="issue-modal__sub-title">Linked Documents ({issue.linkedDocuments.length})</div>
             {issue.linkedDocuments.map((docPath) => (
               <div key={docPath} className="issue-modal__sub-item">
                 <span>{docPath.split('/').pop() ?? docPath}</span>
@@ -121,20 +121,20 @@ export function KanbanIssueModal({ issue, initialStatus, onClose }: KanbanIssueM
                 className="issue-modal__btn issue-modal__btn--danger"
                 onClick={() => setShowDeleteConfirm(true)}
               >
-                삭제
+                Delete
               </button>
             )}
           </div>
           <div className="issue-modal__footer-right">
             <button className="issue-modal__btn issue-modal__btn--secondary" onClick={onClose}>
-              취소
+              Cancel
             </button>
             <button
               className="issue-modal__btn issue-modal__btn--primary"
               onClick={handleSave}
               disabled={saving || !title.trim()}
             >
-              {saving ? '저장 중...' : '저장'}
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
@@ -143,20 +143,20 @@ export function KanbanIssueModal({ issue, initialStatus, onClose }: KanbanIssueM
         {showDeleteConfirm && issue && (
           <div className="issue-modal__delete-overlay">
             <div className="issue-modal__delete-dialog">
-              <div className="issue-modal__delete-title">이슈를 삭제하시겠습니까?</div>
+              <div className="issue-modal__delete-title">Delete this issue?</div>
               <div className="issue-modal__delete-issue-name">{issue.title}</div>
               <div className="issue-modal__delete-actions">
                 <button
                   className="issue-modal__btn issue-modal__btn--secondary"
                   onClick={() => setShowDeleteConfirm(false)}
                 >
-                  취소
+                  Cancel
                 </button>
                 <button
                   className="issue-modal__btn issue-modal__btn--delete-confirm"
                   onClick={handleDeleteConfirm}
                 >
-                  삭제
+                  Delete
                 </button>
               </div>
             </div>
