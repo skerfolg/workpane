@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "A prompt management application",
   "main": "./out/main/index.js",
-  "author": "",
+  "author": "skerfolg <sk.erfolg@gmail.com>",
   "homepage": ".",
   "bin": {
     "pm": "./src/cli/index.ts"
