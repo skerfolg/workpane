@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, memo } from 'react'
 import { LeafNode } from '../../types/terminal-layout'
 import { useTerminals } from '../../contexts/TerminalContext'
+import { useEditor } from '../../contexts/EditorContext'
 import { XTerminal } from './XTerminal'
 import ContextMenu, { ContextMenuItem } from '../ContextMenu/ContextMenu'
 
@@ -53,6 +54,8 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
     isDraggingTab,
     setDragState
   } = useTerminals()
+
+  const { openFile } = useEditor()
 
   const [contextMenu, setContextMenu] = useState<PanelContextMenu | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -353,7 +356,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
                 display: isActive ? 'block' : 'none'
               }}
             >
-              <XTerminal id={terminal.id} isActive={isActive} />
+              <XTerminal id={terminal.id} isActive={isActive} onOpenFile={openFile} />
             </div>
           )
         })}

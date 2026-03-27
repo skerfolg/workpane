@@ -631,8 +631,10 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     setDragSourceInfo(info)
   }, [])
 
-  // Track whether terminals have been initialized for a workspace
-  const initializedForRef = useRef<string | null>(null)
+  // Workspace-scoped terminal state cache: maps workspace path → saved TerminalState
+  const workspaceStatesRef = useRef<Map<string, TerminalState>>(new Map())
+  // Track the currently active workspace path
+  const currentWorkspaceRef = useRef<string | null>(null)
 
   const generateId = useCallback((): string => {
     counterRef.current += 1
@@ -647,8 +649,33 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
   // Initialize terminals when workspace becomes available
   const initTerminals = useCallback(
     async (workspaceCwd: string): Promise<void> => {
-      if (initializedForRef.current === workspaceCwd) return
-      initializedForRef.current = workspaceCwd
+      // Same workspace — no-op
+      if (currentWorkspaceRef.current === workspaceCwd) return
+
+      // Save current workspace state before switching (if not first load)
+      if (currentWorkspaceRef.current !== null) {
+        const cur = stateRef.current
+        workspaceStatesRef.current.set(currentWorkspaceRef.current, {
+          terminals: cur.terminals,
+          groups: cur.groups,
+          activeGroupId: cur.activeGroupId
+        })
+      }
+
+      currentWorkspaceRef.current = workspaceCwd
+
+      // Fast path: restore from in-memory cache (no IPC, no PTY creation)
+      if (workspaceStatesRef.current.has(workspaceCwd)) {
+        const cached = workspaceStatesRef.current.get(workspaceCwd)!
+        dispatch({
+          type: 'RESTORE_STATE',
+          version: 2,
+          terminals: cached.terminals,
+          groups: cached.groups,
+          activeGroupId: cached.activeGroupId
+        })
+        return
+      }
 
       const wsApi = (window as any).workspace
       const termApi = (window as any).terminal

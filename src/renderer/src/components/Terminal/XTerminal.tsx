@@ -1,19 +1,145 @@
-import { useEffect, useRef } from 'react'
-import { Terminal } from '@xterm/xterm'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Terminal, ILinkProvider, ILink, IBufferRange } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import './XTerminal.css'
 
 interface XTerminalProps {
   id: string
   isActive: boolean
+  onOpenFile?: (filePath: string) => void
 }
 
-export function XTerminal({ id, isActive }: XTerminalProps) {
+// File extensions recognized as linkable source files
+const FILE_EXT = '(?:tsx?|jsx?|json|md|css|scss|less|html|ya?ml|toml|py|go|rs|c|cpp|h|hpp|java|rb|sh|bat|ps1|vue|svelte|astro|prisma|sql|graphql|proto|xml|ini|cfg|conf|env|lock|log|txt)'
+
+// Match file paths with optional :line or :line:col
+// Handles: src/foo.ts, ./foo.ts, ../foo.ts, D:\foo.ts, /abs/path.ts, (src/foo.ts:10:5)
+const FILE_PATH_RE = new RegExp(
+  `(?:^|[\\s('"=])` +                      // preceded by whitespace, paren, quote, or start
+  `(` +
+    `(?:[A-Za-z]:[/\\\\]|\\./|\\.\\./)` +  // absolute (C:/ or C:\) or relative (./ or ../)
+    `[\\w./@\\\\-]+\\.${FILE_EXT}` +        // path segments + extension
+  `|` +
+    `(?:[\\w@][\\w./@\\\\-]*/)` +           // relative without ./ (src/foo/)
+    `[\\w.-]+\\.${FILE_EXT}` +              // filename + extension
+  `)` +
+  `(?::(\\d+)(?::(\\d+))?)?`,               // optional :line:col
+  'g'
+)
+
+interface TerminalContextMenu {
+  x: number
+  y: number
+  hasSelection: boolean
+}
+
+const clipboardApi = (window as any).clipboard as {
+  readText: () => string
+  writeText: (text: string) => void
+} | undefined
+
+// App-level shortcuts that must bypass xterm and propagate to document handlers
+function isAppShortcut(e: KeyboardEvent): boolean {
+  const ctrl = e.ctrlKey || e.metaKey
+  const shift = e.shiftKey
+  if (!ctrl) return false
+
+  // Ctrl+Shift combos: P (palette), T (new terminal), W (switch workspace),
+  // F (search), K (kanban), \ (split horizontal), C (copy), V (paste)
+  if (shift && (
+    e.key === 'P' || e.key === 'T' || e.key === 'W' ||
+    e.key === 'F' || e.key === 'K' || e.key === '\\' ||
+    e.key === 'C' || e.key === 'V'
+  )) return true
+
+  // Ctrl combos: ` (toggle terminal), \ (split vertical), B (sidebar),
+  // E (explorer), S (save), W (close tab), Tab (next tab)
+  if (!shift && (
+    e.key === '`' || e.key === '\\' || e.key === 'b' ||
+    e.key === 'e' || e.key === 's' || e.key === 'w' || e.key === 'Tab'
+  )) return true
+
+  return false
+}
+
+// Create a file path link provider for Ctrl+click navigation
+function createFilePathLinkProvider(
+  terminal: Terminal,
+  onOpenFile: (filePath: string) => void,
+  getWorkspacePath: () => string | null
+): ILinkProvider {
+  return {
+    provideLinks(bufferLineNumber: number, callback: (links: ILink[] | undefined) => void): void {
+      const line = terminal.buffer.active.getLine(bufferLineNumber - 1)
+      if (!line) { callback(undefined); return }
+
+      const lineText = line.translateToString(true)
+      const links: ILink[] = []
+
+      FILE_PATH_RE.lastIndex = 0
+      let match: RegExpExecArray | null
+      while ((match = FILE_PATH_RE.exec(lineText)) !== null) {
+        const filePath = match[1]
+        const fullMatch = match[0]
+        const pathStart = match.index + fullMatch.indexOf(filePath)
+        const colonSuffix = (match[2] ? `:${match[2]}` : '') + (match[3] ? `:${match[3]}` : '')
+
+        const range: IBufferRange = {
+          start: { x: pathStart + 1, y: bufferLineNumber },
+          end: { x: pathStart + filePath.length + colonSuffix.length, y: bufferLineNumber }
+        }
+
+        links.push({
+          range,
+          text: filePath + colonSuffix,
+          decorations: { pointerCursor: true, underline: true },
+          activate(event: MouseEvent, text: string): void {
+            if (!event.ctrlKey && !event.metaKey) return
+            // Strip :line:col from path for file opening
+            const pathOnly = text.replace(/:\d+(?::\d+)?$/, '')
+            const wsPath = getWorkspacePath()
+            let resolved = pathOnly
+            if (wsPath && !pathOnly.match(/^[A-Za-z]:[/\\]/) && !pathOnly.startsWith('/')) {
+              resolved = wsPath.replace(/\\/g, '/') + '/' + pathOnly
+            }
+            onOpenFile(resolved)
+          }
+        })
+      }
+
+      callback(links.length > 0 ? links : undefined)
+    }
+  }
+}
+
+export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const [contextMenu, setContextMenu] = useState<TerminalContextMenu | null>(null)
+
+  const handleCopy = useCallback(() => {
+    const term = terminalRef.current
+    if (!term || !clipboardApi) return
+    const selection = term.getSelection()
+    if (selection) {
+      clipboardApi.writeText(selection)
+      term.clearSelection()
+    }
+  }, [])
+
+  const handlePaste = useCallback(() => {
+    const term = terminalRef.current
+    if (!clipboardApi) return
+    const text = clipboardApi.readText()
+    if (text) {
+      const api = (window as any).terminal
+      if (api) api.write(id, text)
+    }
+  }, [id])
 
   // Main effect: create xterm.js view and wire IPC data listeners
   // PTY lifecycle is managed by TerminalContext, NOT here
@@ -37,13 +163,40 @@ export function XTerminal({ id, isActive }: XTerminalProps) {
       fontSize: 14,
       fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace",
       cursorBlink: true,
-      scrollback: 5000
+      scrollback: 5000,
+      rightClickSelectsWord: true
+    })
+
+    // Intercept keys: return false to let event propagate to DOM, true to let xterm handle
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type !== 'keydown') return true
+
+      const ctrl = e.ctrlKey || e.metaKey
+      const shift = e.shiftKey
+
+      // Ctrl+Shift+C — copy selection
+      if (ctrl && shift && e.key === 'C') {
+        handleCopy()
+        return false
+      }
+
+      // Ctrl+Shift+V — paste from clipboard
+      if (ctrl && shift && e.key === 'V') {
+        handlePaste()
+        return false
+      }
+
+      // All other app-level shortcuts bypass xterm
+      if (isAppShortcut(e)) return false
+
+      return true
     })
 
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
 
-    const webLinksAddon = new WebLinksAddon((_, url) => {
+    const webLinksAddon = new WebLinksAddon((event, url) => {
+      if (!event.ctrlKey && !event.metaKey) return
       const shellApi = (window as any).shell
       if (shellApi?.openExternal) {
         shellApi.openExternal(url)
@@ -51,7 +204,30 @@ export function XTerminal({ id, isActive }: XTerminalProps) {
     })
     term.loadAddon(webLinksAddon)
 
+    // File path link provider — Ctrl+click opens file in editor
+    if (onOpenFile) {
+      const wsApi = (window as any).workspace
+      let cachedWsPath: string | null = null
+      wsApi?.getCurrent?.()
+        .then((ws: { path: string } | null) => { cachedWsPath = ws?.path ?? null })
+        .catch(() => {})
+      wsApi?.onChanged?.((info: { path: string } | null) => { cachedWsPath = info?.path ?? null })
+
+      term.registerLinkProvider(
+        createFilePathLinkProvider(term, onOpenFile, () => cachedWsPath)
+      )
+    }
+
     term.open(containerRef.current)
+
+    try {
+      const webglAddon = new WebglAddon()
+      webglAddon.onContextLoss(() => webglAddon.dispose())
+      term.loadAddon(webglAddon)
+    } catch (e) {
+      console.warn('[XTerminal] WebGL addon failed, using DOM renderer:', e)
+    }
+
     terminalRef.current = term
     fitAddonRef.current = fitAddon
     console.log(`[PERF][Renderer] XTerminal xterm instance create: ${(performance.now() - xtermStart).toFixed(1)}ms`)
@@ -62,8 +238,16 @@ export function XTerminal({ id, isActive }: XTerminalProps) {
     let removeExitListener: (() => void) | undefined
 
     if (api) {
+      // Phase 1: Wire onData into QUEUE first — captures data arriving during async IPC roundtrip
+      const queue: string[] = []
+      let directMode = false
       removeDataListener = api.onData((termId: string, data: string) => {
-        if (termId === id) term.write(data)
+        if (termId !== id) return
+        if (directMode) {
+          term.write(data)
+        } else {
+          queue.push(data)
+        }
       })
 
       removeExitListener = api.onExit((termId: string, exitCode: number) => {
@@ -74,6 +258,25 @@ export function XTerminal({ id, isActive }: XTerminalProps) {
 
       term.onData((data: string) => {
         api.write(id, data)
+      })
+
+      // Phase 2: Fetch scrollback, flush queue, then switch to direct passthrough
+      api.getScrollback(id).then((scrollback: string) => {
+        if (scrollback) term.write(scrollback)
+        // Phase 3: Flush data that arrived during the IPC roundtrip
+        for (const chunk of queue) {
+          term.write(chunk)
+        }
+        queue.length = 0
+        // Phase 4: Switch to direct passthrough
+        directMode = true
+      }).catch(() => {
+        // Scrollback unavailable — flush queue and switch to direct passthrough
+        for (const chunk of queue) {
+          term.write(chunk)
+        }
+        queue.length = 0
+        directMode = true
       })
 
       // Initial fit + resize after a delay for layout to settle
@@ -96,7 +299,7 @@ export function XTerminal({ id, isActive }: XTerminalProps) {
       terminalRef.current = null
       fitAddonRef.current = null
     }
-  }, [id])
+  }, [id, handleCopy, handlePaste])
 
   // Handle resize
   useEffect(() => {
@@ -119,17 +322,100 @@ export function XTerminal({ id, isActive }: XTerminalProps) {
     return () => resizeObserver.disconnect()
   }, [id])
 
-  // Re-fit when becoming active
+  // Re-fit and refresh when becoming active (fixes WebGL canvas after tab switch)
   useEffect(() => {
-    if (isActive && fitAddonRef.current) {
-      setTimeout(() => fitAddonRef.current?.fit(), 50)
+    if (isActive && fitAddonRef.current && terminalRef.current) {
+      setTimeout(() => {
+        fitAddonRef.current?.fit()
+        const term = terminalRef.current
+        if (term) term.refresh(0, term.rows - 1)
+      }, 50)
     }
   }, [isActive])
+
+  // Right-click context menu
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const hasSelection = !!terminalRef.current?.getSelection()
+    setContextMenu({ x: e.clientX, y: e.clientY, hasSelection })
+  }, [])
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null)
+    terminalRef.current?.focus()
+  }, [])
+
+  const handleContextCopy = useCallback(() => {
+    handleCopy()
+    closeContextMenu()
+  }, [handleCopy, closeContextMenu])
+
+  const handleContextPaste = useCallback(() => {
+    handlePaste()
+    closeContextMenu()
+  }, [handlePaste, closeContextMenu])
+
+  const handleContextSelectAll = useCallback(() => {
+    terminalRef.current?.selectAll()
+    closeContextMenu()
+  }, [closeContextMenu])
+
+  const handleContextClear = useCallback(() => {
+    terminalRef.current?.clear()
+    closeContextMenu()
+  }, [closeContextMenu])
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!contextMenu) return
+    const handler = () => setContextMenu(null)
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [contextMenu])
 
   return (
     <div
       ref={containerRef}
       className="xterm-container"
-    />
+      onContextMenu={handleContextMenu}
+    >
+      {contextMenu && (
+        <div
+          className="xterm-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            className="xterm-context-menu__item"
+            disabled={!contextMenu.hasSelection}
+            onClick={handleContextCopy}
+          >
+            <span>Copy</span>
+            <span className="xterm-context-menu__shortcut">Ctrl+Shift+C</span>
+          </button>
+          <button
+            className="xterm-context-menu__item"
+            onClick={handleContextPaste}
+          >
+            <span>Paste</span>
+            <span className="xterm-context-menu__shortcut">Ctrl+Shift+V</span>
+          </button>
+          <div className="xterm-context-menu__divider" />
+          <button
+            className="xterm-context-menu__item"
+            onClick={handleContextSelectAll}
+          >
+            <span>Select All</span>
+          </button>
+          <button
+            className="xterm-context-menu__item"
+            onClick={handleContextClear}
+          >
+            <span>Clear</span>
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

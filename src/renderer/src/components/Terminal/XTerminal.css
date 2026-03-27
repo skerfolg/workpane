@@ -31,3 +31,51 @@
 .xterm-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
 }
+
+/* Right-click context menu */
+.xterm-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px 0;
+  background: var(--color-surface-2, #1e1f2e);
+  border: 1px solid var(--border-1, #2a2b3d);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.xterm-context-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: var(--text-1, #c8cad8);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.xterm-context-menu__item:hover:not(:disabled) {
+  background: var(--accent, #4c9eff);
+  color: #fff;
+}
+
+.xterm-context-menu__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.xterm-context-menu__shortcut {
+  margin-left: 24px;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.xterm-context-menu__divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-1, #2a2b3d);
+}
