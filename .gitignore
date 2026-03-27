@@ -12,6 +12,7 @@ node_modules
 dist
 out
 *.local
+.workbench
 
 # Editor directories and files
 .vscode/*
