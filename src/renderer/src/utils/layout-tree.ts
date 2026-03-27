@@ -36,6 +36,16 @@ export function findLeaf(tree: LayoutNode, panelId: PanelId): LeafNode | null {
   return findLeaf(tree.children[0], panelId) ?? findLeaf(tree.children[1], panelId)
 }
 
+export function findLeafByBrowserId(tree: LayoutNode, browserId: string): LeafNode | null {
+  if (tree.type === 'leaf') {
+    return tree.browserIds.includes(browserId) ? tree : null
+  }
+  return (
+    findLeafByBrowserId(tree.children[0], browserId) ??
+    findLeafByBrowserId(tree.children[1], browserId)
+  )
+}
+
 export function findLeafByTerminalId(tree: LayoutNode, terminalId: string): LeafNode | null {
   if (tree.type === 'leaf') {
     return tree.terminalIds.includes(terminalId) ? tree : null
@@ -73,6 +83,7 @@ export function splitPanel(
       type: 'leaf',
       panelId: generatePanelId(),
       terminalIds: newTerminalId ? [newTerminalId] : [],
+      browserIds: [],
       activeTerminalId: newTerminalId ?? null
     }
     const splitNode: SplitNode = {
@@ -108,6 +119,7 @@ export function splitRoot(
     type: 'leaf',
     panelId: generatePanelId(),
     terminalIds: [],
+    browserIds: [],
     activeTerminalId: null
   }
   return {
@@ -298,6 +310,7 @@ function makeLeaf(ids: string[]): LeafNode {
     type: 'leaf',
     panelId: generatePanelId(),
     terminalIds: [...ids],
+    browserIds: [],
     activeTerminalId: ids[0] ?? null
   }
 }
@@ -325,6 +338,7 @@ function validateNode(json: unknown): LayoutNode {
       type: 'leaf',
       panelId: String(node.panelId ?? generatePanelId()),
       terminalIds: Array.isArray(node.terminalIds) ? (node.terminalIds as string[]) : [],
+      browserIds: Array.isArray(node.browserIds) ? (node.browserIds as string[]) : [],
       activeTerminalId: typeof node.activeTerminalId === 'string' ? node.activeTerminalId : null
     }
   }

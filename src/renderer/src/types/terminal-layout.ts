@@ -19,7 +19,16 @@ export interface LeafNode {
   type: 'leaf'
   panelId: PanelId
   terminalIds: string[]
+  browserIds: string[]
   activeTerminalId: string | null
+}
+
+export interface BrowserTabData {
+  url: string
+  title: string
+  canGoBack: boolean
+  canGoForward: boolean
+  isLoading: boolean
 }
 
 export type LayoutNode = SplitNode | LeafNode
@@ -62,3 +71,7 @@ export type TerminalAction =
   | { type: 'MOVE_TERMINAL_TO_GROUP'; terminalId: string; fromGroupId: string; toGroupId: string }
   | { type: 'RESTORE_STATE'; version: 2; terminals: Array<{ id: string; name: string }>; groups: TerminalGroup[]; activeGroupId: string }
   | { type: 'INIT_DEFAULT'; id: string }
+  | { type: 'CREATE_BROWSER'; id: string; panelId: string }
+  | { type: 'REMOVE_BROWSER'; id: string }
+  | { type: 'SET_ACTIVE_BROWSER'; id: string; panelId: string }
+  | { type: 'UPDATE_BROWSER'; id: string; updates: Partial<BrowserTabData> }

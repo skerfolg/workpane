@@ -35,10 +35,20 @@ export interface TerminalTab {
   name: string
 }
 
+export interface BrowserTab {
+  id: string
+  url: string
+  title: string
+  canGoBack: boolean
+  canGoForward: boolean
+  isLoading: boolean
+}
+
 // ---- State ----
 
 interface TerminalState {
   terminals: TerminalTab[]
+  browsers: BrowserTab[]
   groups: TerminalGroup[]
   activeGroupId: string
 }
@@ -66,6 +76,7 @@ export interface DragSourceInfo {
 
 interface TerminalContextValue {
   terminals: TerminalTab[]
+  browsers: BrowserTab[]
   activeTerminalId: string | null
   layoutTree: LayoutNode
   focusedPanelId: string
@@ -98,6 +109,9 @@ interface TerminalContextValue {
   switchGroup: (groupId: string) => void
   toggleGroupCollapse: (groupId: string) => void
   moveTerminalToGroup: (terminalId: string, fromGroupId: string, toGroupId: string) => void
+  createBrowser: (url?: string) => void
+  removeBrowser: (id: string) => void
+  updateBrowserState: (id: string, updates: Partial<BrowserTab>) => void
 }
 
 // ---- SplitRatioContext — isolated to avoid re-rendering entire tree on drag ----
@@ -131,6 +145,7 @@ function makeInitialLeaf(): LayoutNode {
     type: 'leaf',
     panelId: generatePanelId(),
     terminalIds: [],
+    browserIds: [],
     activeTerminalId: null
   }
 }
@@ -141,6 +156,7 @@ function makeInitialState(): TerminalState {
   const groupId = 'group-1'
   return {
     terminals: [],
+    browsers: [],
     groups: [
       {
         id: groupId,
@@ -180,9 +196,9 @@ function innerReducer(state: GroupState, action: TerminalAction): GroupState {
       // Remove terminal from its panel in the layout tree
       let newTree = removeTerminalFromTree(state.layoutTree, id)
 
-      // If a leaf becomes empty, close it (unless it's the last panel)
+      // If a leaf becomes empty (no terminals and no browsers), close it (unless it's the last panel)
       const leaves = getAllLeaves(newTree)
-      const emptyLeaves = leaves.filter((l) => l.terminalIds.length === 0)
+      const emptyLeaves = leaves.filter((l) => l.terminalIds.length === 0 && l.browserIds.length === 0)
       for (const emptyLeaf of emptyLeaves) {
         const afterClose = closePanelTree(newTree, emptyLeaf.panelId)
         if (afterClose !== null) {
@@ -287,7 +303,7 @@ function innerReducer(state: GroupState, action: TerminalAction): GroupState {
       let newTree = moveTerminalTree(state.layoutTree, terminalId, fromPanelId, toPanelId)
 
       const fromLeaf = getAllLeaves(newTree).find((l) => l.panelId === fromPanelId)
-      if (fromLeaf && fromLeaf.terminalIds.length === 0) {
+      if (fromLeaf && fromLeaf.terminalIds.length === 0 && fromLeaf.browserIds.length === 0) {
         const afterClose = closePanelTree(newTree, fromPanelId)
         if (afterClose !== null) newTree = afterClose
       }
@@ -307,7 +323,7 @@ function innerReducer(state: GroupState, action: TerminalAction): GroupState {
       if (!newLeaf) return state
       let newTree = moveTerminalTree(splitTree, terminalId, fromPanelId, newLeaf.panelId)
       const fromLeaf = getAllLeaves(newTree).find((l) => l.panelId === fromPanelId)
-      if (fromLeaf && fromLeaf.terminalIds.length === 0) {
+      if (fromLeaf && fromLeaf.terminalIds.length === 0 && fromLeaf.browserIds.length === 0) {
         const afterClose = closePanelTree(newTree, fromPanelId)
         if (afterClose !== null) newTree = afterClose
       }
@@ -326,7 +342,7 @@ function innerReducer(state: GroupState, action: TerminalAction): GroupState {
       if (!newLeaf) return state
       let newTree = moveTerminalTree(splitTree, terminalId, fromPanelId, newLeaf.panelId)
       const fromLeaf = getAllLeaves(newTree).find((l) => l.panelId === fromPanelId)
-      if (fromLeaf && fromLeaf.terminalIds.length === 0) {
+      if (fromLeaf && fromLeaf.terminalIds.length === 0 && fromLeaf.browserIds.length === 0) {
         const afterClose = closePanelTree(newTree, fromPanelId)
         if (afterClose !== null) newTree = afterClose
       }
@@ -374,6 +390,7 @@ function terminalGroupReducer(state: TerminalState, action: TerminalAction): Ter
       const groupId = state.activeGroupId || 'group-1'
       return {
         terminals: [{ id: action.id, name: 'Terminal 1' }],
+        browsers: [],
         groups: [
           {
             id: groupId,
@@ -392,8 +409,88 @@ function terminalGroupReducer(state: TerminalState, action: TerminalAction): Ter
     case 'RESTORE_STATE': {
       return {
         terminals: action.terminals,
+        browsers: state.browsers,
         groups: action.groups,
         activeGroupId: action.activeGroupId
+      }
+    }
+
+    case 'CREATE_BROWSER': {
+      const { id, panelId } = action
+      const newBrowser: BrowserTab = {
+        id,
+        url: '',
+        title: 'New Tab',
+        canGoBack: false,
+        canGoForward: false,
+        isLoading: false
+      }
+      const activeGroup = getActiveGroup(state)
+      const newLayoutTree = addBrowserToPanel(activeGroup.layoutTree, panelId, id)
+      return {
+        ...state,
+        browsers: [...state.browsers, newBrowser],
+        groups: state.groups.map((g) =>
+          g.id === state.activeGroupId
+            ? { ...g, layoutTree: newLayoutTree, activeTerminalId: id, focusedPanelId: panelId }
+            : g
+        )
+      }
+    }
+
+    case 'REMOVE_BROWSER': {
+      const { id } = action
+      const nextBrowsers = state.browsers.filter((b) => b.id !== id)
+      const activeGroup = getActiveGroup(state)
+      const newLayoutTree = removeBrowserFromTree(activeGroup.layoutTree, id)
+      return {
+        ...state,
+        browsers: nextBrowsers,
+        groups: state.groups.map((g) => {
+          if (g.id !== state.activeGroupId) return g
+          const allLeaves = getAllLeaves(newLayoutTree)
+          let newFocusedPanelId = g.focusedPanelId
+          if (!allLeaves.some((l) => l.panelId === g.focusedPanelId) && allLeaves.length > 0) {
+            newFocusedPanelId = allLeaves[0].panelId
+          }
+          const focusedLeaf = allLeaves.find((l) => l.panelId === newFocusedPanelId)
+          const nextActiveId =
+            g.activeTerminalId === id
+              ? (focusedLeaf?.terminalIds[focusedLeaf.terminalIds.length - 1] ??
+                  focusedLeaf?.browserIds[focusedLeaf.browserIds.length - 1] ??
+                  null)
+              : g.activeTerminalId
+          return {
+            ...g,
+            layoutTree: newLayoutTree,
+            activeTerminalId: nextActiveId,
+            focusedPanelId: newFocusedPanelId
+          }
+        })
+      }
+    }
+
+    case 'SET_ACTIVE_BROWSER': {
+      const { id, panelId } = action
+      const activeGroup = getActiveGroup(state)
+      const newLayoutTree = setActiveInPanel(activeGroup.layoutTree, panelId, id)
+      return {
+        ...state,
+        groups: state.groups.map((g) =>
+          g.id === state.activeGroupId
+            ? { ...g, layoutTree: newLayoutTree, activeTerminalId: id, focusedPanelId: panelId }
+            : g
+        )
+      }
+    }
+
+    case 'UPDATE_BROWSER': {
+      const { id, updates } = action
+      return {
+        ...state,
+        browsers: state.browsers.map((b) =>
+          b.id === id ? { ...b, ...updates } : b
+        )
       }
     }
 
@@ -413,6 +510,7 @@ function terminalGroupReducer(state: TerminalState, action: TerminalAction): Ter
       }
       return {
         terminals: [...state.terminals, newTerminal],
+        browsers: state.browsers,
         groups: [...state.groups, newGroup],
         activeGroupId: groupId
       }
@@ -431,6 +529,7 @@ function terminalGroupReducer(state: TerminalState, action: TerminalAction): Ter
       }
       return {
         terminals: nextTerminals,
+        browsers: state.browsers,
         groups: nextGroups,
         activeGroupId: nextActiveGroupId
       }
@@ -479,8 +578,8 @@ function terminalGroupReducer(state: TerminalState, action: TerminalAction): Ter
 
       // Remove terminal from source group layout
       let fromTree = removeTerminalFromTree(fromGroup.layoutTree, terminalId)
-      // Close empty leaves in source
-      const emptyLeaves = getAllLeaves(fromTree).filter((l) => l.terminalIds.length === 0)
+      // Close empty leaves in source (only if no browsers remain either)
+      const emptyLeaves = getAllLeaves(fromTree).filter((l) => l.terminalIds.length === 0 && l.browserIds.length === 0)
       for (const emptyLeaf of emptyLeaves) {
         const afterClose = closePanelTree(fromTree, emptyLeaf.panelId)
         if (afterClose !== null) fromTree = afterClose
@@ -601,6 +700,43 @@ function removeTerminalFromTree(tree: LayoutNode, terminalId: string): LayoutNod
   }
 }
 
+function addBrowserToPanel(tree: LayoutNode, panelId: string, browserId: string): LayoutNode {
+  if (tree.type === 'leaf') {
+    if (tree.panelId !== panelId) return tree
+    return {
+      ...tree,
+      browserIds: [...tree.browserIds, browserId],
+      activeTerminalId: browserId
+    }
+  }
+  return {
+    ...tree,
+    children: [
+      addBrowserToPanel(tree.children[0], panelId, browserId),
+      addBrowserToPanel(tree.children[1], panelId, browserId)
+    ]
+  }
+}
+
+function removeBrowserFromTree(tree: LayoutNode, browserId: string): LayoutNode {
+  if (tree.type === 'leaf') {
+    if (!tree.browserIds.includes(browserId)) return tree
+    const nextIds = tree.browserIds.filter((id) => id !== browserId)
+    const nextActive =
+      tree.activeTerminalId === browserId
+        ? nextIds[nextIds.length - 1] ?? tree.terminalIds[tree.terminalIds.length - 1] ?? null
+        : tree.activeTerminalId
+    return { ...tree, browserIds: nextIds, activeTerminalId: nextActive }
+  }
+  return {
+    ...tree,
+    children: [
+      removeBrowserFromTree(tree.children[0], browserId),
+      removeBrowserFromTree(tree.children[1], browserId)
+    ]
+  }
+}
+
 function setActiveInPanel(tree: LayoutNode, panelId: string, terminalId: string): LayoutNode {
   if (tree.type === 'leaf') {
     if (tree.panelId !== panelId) return tree
@@ -657,6 +793,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
         const cur = stateRef.current
         workspaceStatesRef.current.set(currentWorkspaceRef.current, {
           terminals: cur.terminals,
+          browsers: cur.browsers,
           groups: cur.groups,
           activeGroupId: cur.activeGroupId
         })
@@ -1135,11 +1272,33 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     []
   )
 
+  const browserCounterRef = useRef(0)
+
+  const createBrowser = useCallback((url?: string): void => {
+    browserCounterRef.current += 1
+    const id = `browser-${browserCounterRef.current}`
+    const activeGroup = getActiveGroup(stateRef.current)
+    dispatch({ type: 'CREATE_BROWSER', id, panelId: activeGroup.focusedPanelId })
+    // Optionally store the initial URL — BrowserPanel will handle actual webview creation
+    if (url) {
+      dispatch({ type: 'UPDATE_BROWSER', id, updates: { url } })
+    }
+  }, [])
+
+  const removeBrowser = useCallback((id: string): void => {
+    dispatch({ type: 'REMOVE_BROWSER', id })
+  }, [])
+
+  const updateBrowserState = useCallback((id: string, updates: Partial<BrowserTab>): void => {
+    dispatch({ type: 'UPDATE_BROWSER', id, updates })
+  }, [])
+
   // Compute context value from active group for backward compatibility
   const activeGroup = getActiveGroup(state)
 
   const contextValue: TerminalContextValue = {
     terminals: state.terminals,
+    browsers: state.browsers,
     activeTerminalId: activeGroup?.activeTerminalId ?? null,
     layoutTree: activeGroup?.layoutTree ?? makeInitialLeaf(),
     focusedPanelId: activeGroup?.focusedPanelId ?? 'panel-1',
@@ -1167,7 +1326,10 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     renameGroup,
     switchGroup,
     toggleGroupCollapse,
-    moveTerminalToGroup
+    moveTerminalToGroup,
+    createBrowser,
+    removeBrowser,
+    updateBrowserState
   }
 
   const splitRatioValue: SplitRatioContextValue = { updateSplitRatio }
@@ -1186,6 +1348,7 @@ function makeSingleLeafWithTerminals(terminalIds: string[]): LayoutNode {
     type: 'leaf',
     panelId: generatePanelId(),
     terminalIds,
+    browserIds: [],
     activeTerminalId: terminalIds[terminalIds.length - 1] ?? null
   }
 }
