@@ -1,0 +1,107 @@
+/* Notification Banner — agent approval alerts, distinct from Toast */
+.notification-banner-container {
+  position: fixed;
+  top: 48px; /* below titlebar */
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  z-index: 9100; /* above Toast z-index 9000 */
+  pointer-events: none;
+}
+
+.notification-banner {
+  display: flex;
+  align-items: stretch;
+  min-width: 260px;
+  max-width: 380px;
+  background: var(--bg-2);
+  border: 1px solid #c97000;
+  border-left: 4px solid #f09000;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--text-1);
+  pointer-events: auto;
+  animation: notification-slide-in 0.22s ease-out forwards;
+  overflow: hidden;
+}
+
+.notification-banner__body {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1;
+  padding: var(--sp-2) var(--sp-3);
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--tr-fast);
+}
+
+.notification-banner__body:hover {
+  background-color: rgba(240, 144, 0, 0.08);
+}
+
+.notification-banner__icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.notification-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.notification-banner__pattern {
+  font-weight: var(--fw-semibold);
+  color: #f09000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-banner__workspace {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-banner__dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border-1);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background-color var(--tr-fast), color var(--tr-fast);
+}
+
+.notification-banner__dismiss:hover {
+  background-color: rgba(240, 144, 0, 0.12);
+  color: var(--text-1);
+}
+
+@keyframes notification-slide-in {
+  from {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

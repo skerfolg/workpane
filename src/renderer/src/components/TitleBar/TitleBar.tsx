@@ -9,6 +9,7 @@ import {
   TerminalSquare,
   Bell
 } from 'lucide-react'
+import { useNotifications } from '../../contexts/NotificationContext'
 import './TitleBar.css'
 
 interface TitleBarProps {
@@ -30,6 +31,8 @@ export default function TitleBar({
   onToggleEditor,
   onToggleTerminal
 }: TitleBarProps): React.JSX.Element {
+  const { notifications } = useNotifications()
+  const notificationCount = notifications.length
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
@@ -93,11 +96,13 @@ export default function TitleBar({
             <TerminalSquare size={14} />
           </button>
           <button
-            className="titlebar-toggle"
-            title="Notifications"
-            disabled
+            className={`titlebar-toggle ${notificationCount > 0 ? 'titlebar-toggle--has-notifications' : ''}`}
+            title={notificationCount > 0 ? `${notificationCount} notification(s)` : 'No notifications'}
           >
             <Bell size={14} />
+            {notificationCount > 0 && (
+              <span className="titlebar-notification-badge">{notificationCount}</span>
+            )}
           </button>
         </div>
 

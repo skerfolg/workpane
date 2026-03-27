@@ -4,6 +4,7 @@ import { TerminalProvider, useTerminals } from './contexts/TerminalContext'
 import { EditorProvider, useEditor } from './contexts/EditorContext'
 import { IssueProvider, useIssues } from './contexts/IssueContext'
 import { KanbanProvider } from './contexts/KanbanContext'
+import { NotificationProvider, useNotifications } from './contexts/NotificationContext'
 import ActivityBar, { ViewType } from './components/ActivityBar/ActivityBar'
 import Sidebar from './components/Sidebar/Sidebar'
 import Splitter from './components/Splitter/Splitter'
@@ -11,6 +12,7 @@ import Welcome from './components/Welcome/Welcome'
 import TitleBar from './components/TitleBar/TitleBar'
 import LoadingBar from './components/LoadingBar/LoadingBar'
 import StatusBar from './components/StatusBar/StatusBar'
+import NotificationBanner from './components/NotificationBanner/NotificationBanner'
 import { CommandPalette, Command } from './components/CommandPalette/CommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useWorkspace } from './hooks/useWorkspace'
@@ -38,6 +40,7 @@ function AppInner(): React.JSX.Element {
   const { createTerminal, splitPanel, focusedPanelId } = useTerminals()
   const { activeTab, closeTab, tabs, setActiveTab, saveFile } = useEditor()
   const { loading: issuesLoading } = useIssues()
+  const { notifications, dismissNotification, handleNotificationClick } = useNotifications()
 
   const handleSidebarResize = useCallback((delta: number) => {
     setSidebarWidth((prev) =>
@@ -254,6 +257,12 @@ function AppInner(): React.JSX.Element {
 
       <StatusBar workspaceName={currentWorkspace?.name ?? null} />
 
+      <NotificationBanner
+        notifications={notifications}
+        onClickNotification={handleNotificationClick}
+        onDismiss={dismissNotification}
+      />
+
       {/* Ctrl+Shift+P Command Palette */}
       <CommandPalette
         isOpen={commandPaletteOpen}
@@ -405,13 +414,15 @@ function App(): React.JSX.Element {
   return (
     <ThemeProvider>
       <TerminalProvider>
-        <EditorProvider>
-          <IssueProvider>
-            <KanbanProvider>
-              <AppProviderMount />
-            </KanbanProvider>
-          </IssueProvider>
-        </EditorProvider>
+        <NotificationProvider>
+          <EditorProvider>
+            <IssueProvider>
+              <KanbanProvider>
+                <AppProviderMount />
+              </KanbanProvider>
+            </IssueProvider>
+          </EditorProvider>
+        </NotificationProvider>
       </TerminalProvider>
     </ThemeProvider>
   )

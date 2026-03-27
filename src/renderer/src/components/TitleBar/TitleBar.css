@@ -104,6 +104,38 @@
   cursor: default;
 }
 
+/* Notification bell with badge */
+.titlebar-toggle--has-notifications {
+  color: var(--accent);
+  animation: titlebar-bell-pulse 2s ease-in-out infinite;
+}
+
+.titlebar-notification-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: #e8622a;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 7px;
+  pointer-events: none;
+}
+
+.titlebar-toggle {
+  position: relative;
+}
+
+@keyframes titlebar-bell-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
 /* Window control buttons */
 .titlebar-window-controls {
   display: flex;

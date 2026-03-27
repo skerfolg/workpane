@@ -2,6 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react'
 import './SettingsView.css'
 import { useTheme } from '../../contexts/ThemeContext'
 
+interface NotificationPattern {
+  name: string
+  pattern: string
+}
+
 interface SettingsData {
   general: {
     language: string
@@ -24,6 +29,11 @@ interface SettingsData {
   workspace: {
     defaultPath: string
   }
+  notification: {
+    enabled: boolean
+    sound: boolean
+    customPatterns: NotificationPattern[]
+  }
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
@@ -31,8 +41,14 @@ const DEFAULT_SETTINGS: SettingsData = {
   appearance: { theme: 'dark' },
   terminal: { defaultShell: '', fontSize: 14, fontFamily: 'monospace' },
   editor: { fontSize: 14, wordWrap: true, tabSize: 2 },
-  workspace: { defaultPath: '' }
+  workspace: { defaultPath: '' },
+  notification: { enabled: true, sound: true, customPatterns: [] }
 }
+
+const BUILTIN_PATTERNS = [
+  { name: 'Claude Code', pattern: 'Do you want to proceed' },
+  { name: 'Codex', pattern: 'Approve|Deny' }
+]
 
 interface SectionProps {
   title: string
@@ -56,6 +72,9 @@ export default function SettingsView(): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS)
   const { setTheme } = useTheme()
+  const [newPatternName, setNewPatternName] = useState('')
+  const [newPatternRegex, setNewPatternRegex] = useState('')
+  const [patternError, setPatternError] = useState('')
 
   useEffect(() => {
     window.settings.get().then((raw) => {
@@ -66,7 +85,8 @@ export default function SettingsView(): React.JSX.Element {
           appearance: { ...prev.appearance, ...(s.appearance as object ?? {}) },
           terminal: { ...prev.terminal, ...(s.terminal as object ?? {}) },
           editor: { ...prev.editor, ...(s.editor as object ?? {}) },
-          workspace: { ...prev.workspace, ...(s.workspace as object ?? {}) }
+          workspace: { ...prev.workspace, ...(s.workspace as object ?? {}) },
+          notification: { ...prev.notification, ...(s.notification as object ?? {}) }
         }))
       }
     })
@@ -88,6 +108,45 @@ export default function SettingsView(): React.JSX.Element {
     setSetting('appearance', 'theme', theme)
     setTheme(theme as 'dark' | 'light' | 'high-contrast')
   }, [setSetting, setTheme])
+
+  const handleAddPattern = useCallback(() => {
+    if (!newPatternName.trim() || !newPatternRegex.trim()) {
+      setPatternError('Name and pattern are required.')
+      return
+    }
+    try {
+      new RegExp(newPatternRegex)
+    } catch {
+      setPatternError('Invalid regular expression.')
+      return
+    }
+    setPatternError('')
+    setSettings((prev) => {
+      const updated = {
+        ...prev,
+        notification: {
+          ...prev.notification,
+          customPatterns: [
+            ...prev.notification.customPatterns,
+            { name: newPatternName.trim(), pattern: newPatternRegex.trim() }
+          ]
+        }
+      }
+      window.settings.set('notification.customPatterns', updated.notification.customPatterns)
+      return updated
+    })
+    setNewPatternName('')
+    setNewPatternRegex('')
+  }, [newPatternName, newPatternRegex])
+
+  const handleDeletePattern = useCallback((index: number) => {
+    setSettings((prev) => {
+      const customPatterns = prev.notification.customPatterns.filter((_, i) => i !== index)
+      const updated = { ...prev, notification: { ...prev.notification, customPatterns } }
+      window.settings.set('notification.customPatterns', customPatterns)
+      return updated
+    })
+  }, [])
 
   const handleImportTheme = useCallback(async () => {
     try {
@@ -288,6 +347,87 @@ export default function SettingsView(): React.JSX.Element {
                   />
                 </div>
               </div>
+            ) : null}
+          </Section>
+        )}
+
+        {(visible('notification') || visible('approval') || visible('sound') || visible('pattern') || !q) && (
+          <Section title="Notifications">
+            {visible('approval') || visible('notification') || !q ? (
+              <div className="settings-row">
+                <span className="settings-row__label">Agent Approval Notifications</span>
+                <div className="settings-row__control">
+                  <input
+                    type="checkbox"
+                    checked={settings.notification.enabled}
+                    onChange={(e) => setSetting('notification', 'enabled', e.target.checked)}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {visible('sound') || visible('notification') || !q ? (
+              <div className="settings-row">
+                <span className="settings-row__label">Notification Sound</span>
+                <div className="settings-row__control">
+                  <input
+                    type="checkbox"
+                    checked={settings.notification.sound}
+                    onChange={(e) => setSetting('notification', 'sound', e.target.checked)}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {visible('pattern') || visible('notification') || !q ? (
+              <>
+                <div className="settings-row--column">
+                  <span className="settings-row__label">Built-in Detection Patterns</span>
+                  <div className="settings-pattern-list">
+                    {BUILTIN_PATTERNS.map((p) => (
+                      <div key={p.name} className="settings-pattern-row settings-pattern-row--builtin">
+                        <span className="settings-pattern-row__name">{p.name}</span>
+                        <span className="settings-pattern-row__pattern">{p.pattern}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="settings-row--column">
+                  <span className="settings-row__label">Custom Detection Patterns</span>
+                  <div className="settings-pattern-list">
+                    {settings.notification.customPatterns.map((p, i) => (
+                      <div key={i} className="settings-pattern-row">
+                        <span className="settings-pattern-row__name">{p.name}</span>
+                        <span className="settings-pattern-row__pattern">{p.pattern}</span>
+                        <button
+                          className="settings-btn settings-btn--secondary settings-btn--small"
+                          onClick={() => handleDeletePattern(i)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="settings-pattern-add">
+                    <input
+                      type="text"
+                      placeholder="Pattern name"
+                      value={newPatternName}
+                      onChange={(e) => { setNewPatternName(e.target.value); setPatternError('') }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Regex pattern"
+                      value={newPatternRegex}
+                      onChange={(e) => { setNewPatternRegex(e.target.value); setPatternError('') }}
+                    />
+                    <button className="settings-btn" onClick={handleAddPattern}>Add</button>
+                  </div>
+                  {patternError && (
+                    <div className="settings-pattern-error">{patternError}</div>
+                  )}
+                </div>
+              </>
             ) : null}
           </Section>
         )}
