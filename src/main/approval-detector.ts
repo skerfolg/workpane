@@ -18,14 +18,20 @@ export function stripAnsi(text: string): string {
 }
 
 const BUILTIN_PATTERNS: ApprovalPattern[] = [
-  { id: 'claude-proceed', name: 'Claude Code: Do you want to proceed?', regex: /Do you want to proceed\?/, builtin: true },
-  { id: 'claude-enter', name: 'Claude Code: press Enter to confirm', regex: /press Enter to confirm/i, builtin: true },
-  { id: 'claude-yn-upper', name: 'Claude Code: (Y/n)', regex: /\(Y\/n\)/, builtin: true },
-  { id: 'claude-yn-lower', name: 'Claude Code: (y/N)', regex: /\(y\/N\)/, builtin: true },
-  { id: 'claude-yn-prompt', name: 'Claude Code: ? (y/n)', regex: /\? \(y\/n\)/i, builtin: true },
-  { id: 'codex-approve', name: 'Codex: Approve changes?', regex: /Approve changes\?/i, builtin: true },
-  { id: 'codex-allow', name: 'Codex: Allow action', regex: /Allow .+ to .+/i, builtin: true },
-  { id: 'codex-confirm', name: 'Codex: Confirm action', regex: /Confirm .+ action/i, builtin: true }
+  // Generic prompts (agent-agnostic)
+  { id: 'generic-proceed', name: 'Do you want to proceed?', regex: /Do you want to proceed\?/, builtin: true },
+  { id: 'generic-enter-confirm', name: 'Press Enter to confirm', regex: /press Enter to confirm/i, builtin: true },
+  { id: 'generic-yn-upper', name: 'Confirm (Y/n)', regex: /\(Y\/n\)/, builtin: true },
+  { id: 'generic-yn-lower', name: 'Confirm (y/N)', regex: /\(y\/N\)/, builtin: true },
+  { id: 'generic-yn-prompt', name: 'Confirm (y/n)', regex: /\? ?\(y\/n\)/i, builtin: true },
+  { id: 'generic-approve', name: 'Approve changes?', regex: /Approve changes\?/i, builtin: true },
+  { id: 'generic-allow', name: 'Allow action', regex: /Allow .+ to .+/i, builtin: true },
+  { id: 'generic-confirm-action', name: 'Confirm action', regex: /Confirm .+ action/i, builtin: true },
+  // Common interactive prompts
+  { id: 'generic-continue', name: 'Continue?', regex: /\bContinue\?\s*$/m, builtin: true },
+  { id: 'generic-overwrite', name: 'Overwrite?', regex: /[Oo]verwrite\?/i, builtin: true },
+  { id: 'generic-yes-no', name: 'Yes/No prompt', regex: /\[(?:yes|no)\]/i, builtin: true },
+  { id: 'generic-press-key', name: 'Press any key', regex: /[Pp]ress (?:any key|enter|ENTER)/i, builtin: true },
 ]
 
 const SLIDING_WINDOW_MAX_BYTES = 2048
