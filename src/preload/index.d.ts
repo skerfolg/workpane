@@ -74,30 +74,9 @@ export interface Issue {
   children?: Issue[]
 }
 
-export interface IssueCreateData {
-  title: string
-  status?: string
-  priority?: string
-  category?: string
-  type?: string
-  docsPath: string
-}
-
-export interface IssueUpdateData {
-  status?: string
-  priority?: string
-  category?: string
-  title?: string
-  content?: string
-}
-
 export interface IssuesAPI {
   scan: (docsPath: string) => Promise<Issue[]>
   scanAll: (projectRoot: string) => Promise<unknown[]>
-  create: (data: IssueCreateData) => Promise<string>
-  update: (filePath: string, updates: IssueUpdateData) => Promise<void>
-  delete: (filePath: string) => Promise<void>
-  updateStatus: (filePath: string, status: string) => Promise<void>
 }
 
 export interface WatcherAPI {
@@ -193,6 +172,21 @@ export interface KanbanAPI {
   saveTemplate: (workspacePath: string, template: KanbanPromptTemplate) => Promise<KanbanPromptTemplate>
 }
 
+export interface BrowserAPI {
+  register: (id: string, webContentsId: number) => Promise<void>
+  navigate: (id: string, url: string) => Promise<void>
+  goBack: (id: string) => Promise<void>
+  goForward: (id: string) => Promise<void>
+  reload: (id: string) => Promise<void>
+  toggleDevTools: (id: string) => Promise<void>
+  close: (id: string) => Promise<void>
+  onNavigated: (callback: (id: string, url: string) => void) => () => void
+  onTitleUpdated: (callback: (id: string, title: string) => void) => () => void
+  onLoadingChanged: (callback: (id: string, isLoading: boolean) => void) => () => void
+  onNavigationStateChanged: (callback: (id: string, canGoBack: boolean, canGoForward: boolean) => void) => () => void
+  onConsoleMessage: (callback: (id: string, level: string, message: string) => void) => () => void
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -206,6 +200,7 @@ declare global {
     search: SearchAPI
     theme: ThemeAPI
     kanban: KanbanAPI
+    browser: BrowserAPI
     api: unknown
   }
 }

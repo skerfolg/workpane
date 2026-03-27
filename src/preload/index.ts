@@ -84,13 +84,6 @@ const issuesAPI = {
     ipcRenderer.on('docs:incremental-update', handler)
     return () => ipcRenderer.removeListener('docs:incremental-update', handler)
   },
-  create: (data: { title: string; status?: string; priority?: string; category?: string; type?: string; docsPath: string }) =>
-    ipcRenderer.invoke('issues:create', data),
-  update: (filePath: string, updates: { status?: string; priority?: string; category?: string; title?: string; content?: string }) =>
-    ipcRenderer.invoke('issues:update', { filePath, updates }),
-  delete: (filePath: string) => ipcRenderer.invoke('issues:delete', filePath),
-  updateStatus: (filePath: string, status: string) =>
-    ipcRenderer.invoke('issues:update-status', { filePath, status })
 }
 
 const watcherAPI = {
@@ -151,6 +144,48 @@ const recoveryAPI = {
   clear: (workspacePath: string) => ipcRenderer.invoke('recovery:clear', workspacePath)
 }
 
+const browserAPI = {
+  register: (id: string, webContentsId: number) =>
+    ipcRenderer.invoke('browser:register', { id, webContentsId }),
+  navigate: (id: string, url: string) =>
+    ipcRenderer.invoke('browser:navigate', { id, url }),
+  goBack: (id: string) => ipcRenderer.invoke('browser:go-back', { id }),
+  goForward: (id: string) => ipcRenderer.invoke('browser:go-forward', { id }),
+  reload: (id: string) => ipcRenderer.invoke('browser:reload', { id }),
+  toggleDevTools: (id: string) => ipcRenderer.invoke('browser:toggle-devtools', { id }),
+  close: (id: string) => ipcRenderer.invoke('browser:close', { id }),
+  onNavigated: (callback: (id: string, url: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, { id, url }: { id: string; url: string }) =>
+      callback(id, url)
+    ipcRenderer.on('browser:navigated', handler)
+    return () => ipcRenderer.removeListener('browser:navigated', handler)
+  },
+  onTitleUpdated: (callback: (id: string, title: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, { id, title }: { id: string; title: string }) =>
+      callback(id, title)
+    ipcRenderer.on('browser:title-updated', handler)
+    return () => ipcRenderer.removeListener('browser:title-updated', handler)
+  },
+  onLoadingChanged: (callback: (id: string, isLoading: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, { id, isLoading }: { id: string; isLoading: boolean }) =>
+      callback(id, isLoading)
+    ipcRenderer.on('browser:loading-changed', handler)
+    return () => ipcRenderer.removeListener('browser:loading-changed', handler)
+  },
+  onNavigationStateChanged: (callback: (id: string, canGoBack: boolean, canGoForward: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { id: string; canGoBack: boolean; canGoForward: boolean }) =>
+      callback(data.id, data.canGoBack, data.canGoForward)
+    ipcRenderer.on('browser:navigation-state-changed', handler)
+    return () => ipcRenderer.removeListener('browser:navigation-state-changed', handler)
+  },
+  onConsoleMessage: (callback: (id: string, level: string, message: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { id: string; level: string; message: string }) =>
+      callback(data.id, data.level, data.message)
+    ipcRenderer.on('browser:console-message', handler)
+    return () => ipcRenderer.removeListener('browser:console-message', handler)
+  }
+}
+
 const kanbanAPI = {
   load: (workspacePath: string) =>
     ipcRenderer.invoke('kanban:load', workspacePath),
@@ -198,6 +233,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('recovery', recoveryAPI)
     contextBridge.exposeInMainWorld('kanban', kanbanAPI)
     contextBridge.exposeInMainWorld('clipboard', clipboardAPI)
+    contextBridge.exposeInMainWorld('browser', browserAPI)
   } catch (error) {
     console.error(error)
   }
@@ -234,4 +270,6 @@ if (process.contextIsolated) {
   window.kanban = kanbanAPI
   // @ts-ignore (define in dts)
   window.clipboard = clipboardAPI
+  // @ts-ignore (define in dts)
+  window.browser = browserAPI
 }

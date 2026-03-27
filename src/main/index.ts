@@ -8,7 +8,6 @@ import { SettingsManager } from './settings-manager'
 import { WorkspaceManager } from './workspace-manager'
 import { scanIssues, scanAllDocs, enrichDocTitles, applyTitleUpdatesToCache, populateCache, handleFileChange, buildGroupsFromCache, parseFileOnDemand, invalidateParsedCache } from './issue-parser'
 import type { IncrementalUpdate } from './issue-parser'
-import { createIssue, updateIssue, deleteIssue, updateIssueStatus } from './issue-writer'
 import * as kanbanStore from './kanban-store'
 import { WatcherManager } from './file-watcher'
 import { searchFiles, replaceInFiles, invalidateSearchCache } from './search-service'
@@ -17,9 +16,12 @@ import { SkillsManager } from './skills-manager'
 import { CrashRecovery } from './crash-recovery'
 import { assertWithinWorkspace } from './path-validator'
 import { ApprovalDetector } from './approval-detector'
+import { BrowserManager } from './browser-manager'
+import { McpBrowserHandler } from './mcp-browser-server'
 import * as path from 'path'
 
 const terminalManager = new TerminalManager()
+const browserManager = new BrowserManager()
 const settingsManager = new SettingsManager()
 const workspaceManager = new WorkspaceManager(settingsManager)
 const watcherManager = new WatcherManager()
@@ -50,6 +52,8 @@ watcherManager.onFlush((rootDir, changes) => {
 })
 
 const apiServer = new ApiServer(terminalManager, workspaceManager, settingsManager)
+const mcpBrowserHandler = new McpBrowserHandler(browserManager)
+apiServer.setMcpBrowserHandler(mcpBrowserHandler)
 const skillsManager = new SkillsManager()
 const crashRecovery = new CrashRecovery()
 let mainWindow: BrowserWindow | null = null
@@ -65,7 +69,8 @@ function createWindow(): void {
     titleBarStyle: 'hidden',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      webviewTag: true
     }
   })
   console.log(`[PERF][Main] createWindow: BrowserWindow constructed ${(performance.now() - _perfStart).toFixed(1)}ms`)
@@ -319,26 +324,6 @@ ipcMain.handle('issues:parse-file', async (_event, filePath: string) => {
   return parseFileOnDemand(filePath)
 })
 
-ipcMain.handle('issues:create', (_event, data: Parameters<typeof createIssue>[0]) => {
-  return createIssue(data)
-})
-
-ipcMain.handle('issues:update', (_event, { filePath, updates }: { filePath: string; updates: Parameters<typeof updateIssue>[1] }) => {
-  const workspace = workspaceManager.getCurrentWorkspace()
-  const docsRoot = workspace ? `${workspace.path}/docs` : undefined
-  return updateIssue(filePath, updates, docsRoot)
-})
-
-ipcMain.handle('issues:delete', (_event, filePath: string) => {
-  return deleteIssue(filePath)
-})
-
-ipcMain.handle('issues:update-status', (_event, { filePath, status }: { filePath: string; status: string }) => {
-  const workspace = workspaceManager.getCurrentWorkspace()
-  const docsRoot = workspace ? `${workspace.path}/docs` : undefined
-  return updateIssue(filePath, { status }, docsRoot)
-})
-
 // IPC handlers for file watcher
 ipcMain.handle('watcher:start', (_event, dirPath: string, excludePaths?: string[]) => {
   const _t = performance.now()
@@ -505,6 +490,46 @@ ipcMain.handle('kanban:save-template', (_event, workspacePath: string, template:
   return kanbanStore.savePromptTemplate(workspacePath, template)
 })
 
+// IPC handlers for browser
+ipcMain.handle('browser:register', (_event, { id, webContentsId }: { id: string; webContentsId: number }) => {
+  browserManager.register(id, webContentsId)
+  const wc = browserManager.getWebContents(id)
+  if (wc && mainWindow && !mainWindow.isDestroyed()) {
+    wc.on('did-navigate', (_e, url) => {
+      mainWindow!.webContents.send('browser:navigated', { id, url })
+      mainWindow!.webContents.send('browser:navigation-state-changed', {
+        id, canGoBack: wc.canGoBack(), canGoForward: wc.canGoForward()
+      })
+    })
+    wc.on('did-navigate-in-page', (_e, url) => {
+      mainWindow!.webContents.send('browser:navigated', { id, url })
+      mainWindow!.webContents.send('browser:navigation-state-changed', {
+        id, canGoBack: wc.canGoBack(), canGoForward: wc.canGoForward()
+      })
+    })
+    wc.on('page-title-updated', (_e, title) => {
+      mainWindow!.webContents.send('browser:title-updated', { id, title })
+    })
+    wc.on('did-start-loading', () => {
+      mainWindow!.webContents.send('browser:loading-changed', { id, isLoading: true })
+    })
+    wc.on('did-stop-loading', () => {
+      mainWindow!.webContents.send('browser:loading-changed', { id, isLoading: false })
+    })
+    wc.on('console-message', (_e, level, message) => {
+      browserManager.appendConsoleLog(id, String(level), message)
+      mainWindow!.webContents.send('browser:console-message', { id, level: String(level), message })
+    })
+  }
+})
+
+ipcMain.handle('browser:navigate', (_event, { id, url }: { id: string; url: string }) => browserManager.navigate(id, url))
+ipcMain.handle('browser:go-back', (_event, { id }: { id: string }) => browserManager.goBack(id))
+ipcMain.handle('browser:go-forward', (_event, { id }: { id: string }) => browserManager.goForward(id))
+ipcMain.handle('browser:reload', (_event, { id }: { id: string }) => browserManager.reload(id))
+ipcMain.handle('browser:toggle-devtools', (_event, { id }: { id: string }) => browserManager.toggleDevTools(id))
+ipcMain.handle('browser:close', (_event, { id }: { id: string }) => browserManager.close(id))
+
 app.whenReady().then(() => {
   const _appReadyStart = performance.now()
   console.log(`[PERF][Main] app:ready start`)
@@ -525,6 +550,8 @@ app.whenReady().then(() => {
   terminalManager.setApprovalDetector(approvalDetector)
   const customPatterns = (settingsManager.get('notification.customPatterns') ?? []) as Array<{ name: string; pattern: string }>
   approvalDetector.setCustomPatterns(customPatterns)
+
+  mcpBrowserHandler.setMainWindow(mainWindow!)
 
   console.log(`[PERF][Main] app:ready → apiServer.start`)
   apiServer.start()

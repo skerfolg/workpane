@@ -4,6 +4,7 @@ import * as path from 'path'
 import { TerminalManager } from './terminal-manager'
 import { WorkspaceManager } from './workspace-manager'
 import { SettingsManager } from './settings-manager'
+import { McpBrowserHandler } from './mcp-browser-server'
 
 const SOCKET_PATH =
   os.platform() === 'win32'
@@ -27,6 +28,7 @@ export class ApiServer {
   private terminalManager: TerminalManager
   private workspaceManager: WorkspaceManager
   private settingsManager: SettingsManager
+  private mcpBrowserHandler: McpBrowserHandler | null = null
 
   constructor(
     terminalManager: TerminalManager,
@@ -36,6 +38,10 @@ export class ApiServer {
     this.terminalManager = terminalManager
     this.workspaceManager = workspaceManager
     this.settingsManager = settingsManager
+  }
+
+  setMcpBrowserHandler(handler: McpBrowserHandler): void {
+    this.mcpBrowserHandler = handler
   }
 
   private async handleRequest(req: JsonRpcRequest): Promise<unknown> {
@@ -81,8 +87,13 @@ export class ApiServer {
         }
       }
 
-      default:
+      default: {
+        if (this.mcpBrowserHandler) {
+          const result = await this.mcpBrowserHandler.handleRequest(method, params)
+          if (result !== null) return result
+        }
         throw new Error(`Unknown method: ${method}`)
+      }
     }
   }
 
