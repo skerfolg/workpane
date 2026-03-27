@@ -1,5 +1,12 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 
+export interface ApprovalDetectedEvent {
+  terminalId: string
+  workspacePath: string
+  patternName: string
+  matchedText: string
+}
+
 export interface TerminalAPI {
   create: (id: string, shell?: string, cwd?: string) => Promise<void>
   write: (id: string, data: string) => void
@@ -7,6 +14,8 @@ export interface TerminalAPI {
   kill: (id: string) => Promise<void>
   onData: (callback: (id: string, data: string) => void) => () => void
   onExit: (callback: (id: string, exitCode: number) => void) => () => void
+  getScrollback: (id: string) => Promise<string>
+  onApprovalDetected?: (callback: (event: ApprovalDetectedEvent) => void) => () => void
 }
 
 export interface SettingsAPI {

@@ -1,5 +1,10 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+
+const clipboardAPI = {
+  readText: (): string => clipboard.readText(),
+  writeText: (text: string): void => clipboard.writeText(text)
+}
 
 const terminalAPI = {
   create: (id: string, shell?: string, cwd?: string) =>
@@ -21,6 +26,12 @@ const terminalAPI = {
       callback(id, exitCode)
     ipcRenderer.on('terminal:exit', handler)
     return () => ipcRenderer.removeListener('terminal:exit', handler)
+  },
+  getScrollback: (id: string) => ipcRenderer.invoke('terminal:get-scrollback', { id }),
+  onApprovalDetected: (callback: (event: { terminalId: string; workspacePath: string; patternName: string; matchedText: string; timestamp: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { terminalId: string; workspacePath: string; patternName: string; matchedText: string; timestamp: number }) => callback(data)
+    ipcRenderer.on('terminal:approval-detected', handler)
+    return () => ipcRenderer.removeListener('terminal:approval-detected', handler)
   }
 }
 
@@ -186,6 +197,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('skills', skillsAPI)
     contextBridge.exposeInMainWorld('recovery', recoveryAPI)
     contextBridge.exposeInMainWorld('kanban', kanbanAPI)
+    contextBridge.exposeInMainWorld('clipboard', clipboardAPI)
   } catch (error) {
     console.error(error)
   }
@@ -220,4 +232,6 @@ if (process.contextIsolated) {
   window.recovery = recoveryAPI
   // @ts-ignore (define in dts)
   window.kanban = kanbanAPI
+  // @ts-ignore (define in dts)
+  window.clipboard = clipboardAPI
 }
