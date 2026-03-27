@@ -1,4 +1,4 @@
-/* Notification Banner — agent approval alerts, distinct from Toast */
+/* Notification Banner — minimal style, consistent with Toast */
 .notification-banner-container {
   position: fixed;
   top: 48px; /* below titlebar */
@@ -6,25 +6,25 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  z-index: 9100; /* above Toast z-index 9000 */
+  z-index: 9100;
   pointer-events: none;
 }
 
 .notification-banner {
   display: flex;
   align-items: stretch;
-  min-width: 260px;
-  max-width: 380px;
+  min-width: 240px;
+  max-width: 360px;
   background: var(--bg-2);
-  border: 1px solid #c97000;
-  border-left: 4px solid #f09000;
+  border: 1px solid var(--border-2);
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-float);
   font-family: var(--font-sans);
   font-size: var(--fs-sm);
   color: var(--text-1);
   pointer-events: auto;
-  animation: notification-slide-in 0.22s ease-out forwards;
+  animation: notification-slide-in 0.2s ease-out forwards;
   overflow: hidden;
 }
 
@@ -43,13 +43,7 @@
 }
 
 .notification-banner__body:hover {
-  background-color: rgba(240, 144, 0, 0.08);
-}
-
-.notification-banner__icon {
-  font-size: 16px;
-  flex-shrink: 0;
-  line-height: 1;
+  background-color: var(--bg-3);
 }
 
 .notification-banner__text {
@@ -59,17 +53,24 @@
   min-width: 0;
 }
 
-.notification-banner__pattern {
+.notification-banner__title {
   font-weight: var(--fw-semibold);
-  color: #f09000;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+}
+
+.notification-banner__detail {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 280px;
 }
 
 .notification-banner__workspace {
   font-size: var(--fs-xs);
-  color: var(--text-2);
+  color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -91,7 +92,7 @@
 }
 
 .notification-banner__dismiss:hover {
-  background-color: rgba(240, 144, 0, 0.12);
+  background-color: var(--bg-3);
   color: var(--text-1);
 }
 

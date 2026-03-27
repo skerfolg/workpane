@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { FileText, ChevronRight, ChevronDown } from 'lucide-react'
+import React, { useState, useMemo, useCallback } from 'react'
+import { FileText, ChevronRight, ChevronDown, Search } from 'lucide-react'
 import { useKanban } from '../../contexts/KanbanContext'
 import { useEditor } from '../../contexts/EditorContext'
 import './KanbanIssueDocTree.css'
@@ -8,46 +8,61 @@ function basename(filePath: string): string {
   return filePath.replace(/\\/g, '/').split('/').pop() ?? filePath
 }
 
-function StatusBadge({ status }: { status: string }): React.JSX.Element {
-  const normalized = status.toLowerCase().replace(/\s+/g, '-')
-  return (
-    <span className={`kanban-doc-tree__status-badge kanban-doc-tree__status-badge--${normalized}`}>
-      {status}
-    </span>
-  )
-}
-
-interface IssueGroupProps {
+interface KanbanIssue {
   id: string
   title: string
   status: string
   linkedDocuments: string[]
+}
+
+// Status groups in display order — resolved collapsed by default
+const STATUS_GROUPS: Array<{ id: string; label: string; defaultExpanded: boolean }> = [
+  { id: 'open', label: 'Open', defaultExpanded: true },
+  { id: 'in-progress', label: 'In Progress', defaultExpanded: true },
+  { id: 'resolved', label: 'Resolved', defaultExpanded: false }
+]
+
+function normalizeStatus(status: string): string {
+  return status.toLowerCase().replace(/\s+/g, '-')
+}
+
+// ---- Issue item (single issue row with optional doc children) ----
+
+interface IssueItemProps {
+  issue: KanbanIssue
   onOpenFile: (filePath: string) => void
 }
 
-function IssueGroup({ id, title, status, linkedDocuments, onOpenFile }: IssueGroupProps): React.JSX.Element {
-  const [expanded, setExpanded] = useState(true)
-  const shortId = id.slice(0, 7)
+function IssueItem({ issue, onOpenFile }: IssueItemProps): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const shortId = issue.id.slice(0, 7)
+  const hasDocs = issue.linkedDocuments.length > 0
 
   return (
-    <div className="kanban-doc-tree__group">
+    <>
       <div
-        className="kanban-doc-tree__node kanban-doc-tree__node--parent"
+        className={`kanban-doc-tree__node kanban-doc-tree__node--issue${hasDocs ? '' : ' kanban-doc-tree__node--no-docs'}`}
         role="treeitem"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((prev) => !prev)}
+        aria-expanded={hasDocs ? expanded : undefined}
+        onClick={hasDocs ? () => setExpanded((prev) => !prev) : undefined}
       >
-        <span className="kanban-doc-tree__chevron">
-          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </span>
+        {hasDocs ? (
+          <span className="kanban-doc-tree__chevron">
+            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </span>
+        ) : (
+          <span className="kanban-doc-tree__chevron kanban-doc-tree__chevron--empty" />
+        )}
         <span className="kanban-doc-tree__hash">{shortId}</span>
-        <span className="kanban-doc-tree__title">{title}</span>
-        <StatusBadge status={status} />
+        <span className="kanban-doc-tree__title">{issue.title}</span>
+        {hasDocs && (
+          <span className="kanban-doc-tree__doc-count">{issue.linkedDocuments.length}</span>
+        )}
       </div>
 
-      {expanded && (
+      {hasDocs && expanded && (
         <div className="kanban-doc-tree__children" role="group">
-          {linkedDocuments.map((filePath) => (
+          {issue.linkedDocuments.map((filePath) => (
             <div
               key={filePath}
               className="kanban-doc-tree__node kanban-doc-tree__node--sub"
@@ -61,36 +76,128 @@ function IssueGroup({ id, title, status, linkedDocuments, onOpenFile }: IssueGro
           ))}
         </div>
       )}
+    </>
+  )
+}
+
+// ---- Status group (collapsible section header) ----
+
+interface StatusGroupProps {
+  label: string
+  count: number
+  defaultExpanded: boolean
+  issues: KanbanIssue[]
+  onOpenFile: (filePath: string) => void
+}
+
+function StatusGroup({ label, count, defaultExpanded, issues, onOpenFile }: StatusGroupProps): React.JSX.Element {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+
+  return (
+    <div className="kanban-doc-tree__status-group">
+      <div
+        className="kanban-doc-tree__node kanban-doc-tree__node--status-header"
+        role="treeitem"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((prev) => !prev)}
+      >
+        <span className="kanban-doc-tree__chevron">
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </span>
+        <span className="kanban-doc-tree__status-label">{label}</span>
+        <span className="kanban-doc-tree__status-count">{count}</span>
+      </div>
+
+      {expanded && (
+        <div className="kanban-doc-tree__status-children" role="group">
+          {issues.map((issue) => (
+            <IssueItem key={issue.id} issue={issue} onOpenFile={onOpenFile} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
+// ---- Main tree ----
+
 export function KanbanIssueDocTree(): React.JSX.Element {
   const { issues } = useKanban()
   const { openFile } = useEditor()
+  const [filter, setFilter] = useState('')
 
-  const issuesWithDocs = issues.filter((issue) => issue.linkedDocuments.length > 0)
+  const handleFilterChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilter(e.target.value)
+  }, [])
 
-  if (issuesWithDocs.length === 0) {
+  const filteredIssues = useMemo(() => {
+    if (!filter.trim()) return issues
+    const q = filter.toLowerCase()
+    return issues.filter(
+      (issue) =>
+        issue.title.toLowerCase().includes(q) ||
+        issue.id.toLowerCase().includes(q)
+    )
+  }, [issues, filter])
+
+  const groupedIssues = useMemo(() => {
+    const groups = new Map<string, KanbanIssue[]>()
+    for (const group of STATUS_GROUPS) {
+      groups.set(group.id, [])
+    }
+    for (const issue of filteredIssues) {
+      const key = normalizeStatus(issue.status)
+      const list = groups.get(key)
+      if (list) {
+        list.push(issue)
+      } else {
+        // Unknown status — append to a catch-all
+        const existing = groups.get('open') ?? []
+        existing.push(issue)
+      }
+    }
+    return groups
+  }, [filteredIssues])
+
+  if (issues.length === 0) {
     return (
       <div className="kanban-doc-tree">
-        <p className="kanban-doc-tree__empty">No issues with linked documents</p>
+        <p className="kanban-doc-tree__empty">No issues</p>
       </div>
     )
   }
 
   return (
-    <div className="kanban-doc-tree" role="tree" aria-label="Documents linked by issue">
-      {issuesWithDocs.map((issue) => (
-        <IssueGroup
-          key={issue.id}
-          id={issue.id}
-          title={issue.title}
-          status={issue.status}
-          linkedDocuments={issue.linkedDocuments}
-          onOpenFile={openFile}
+    <div className="kanban-doc-tree" role="tree" aria-label="Kanban issues">
+      <div className="kanban-doc-tree__filter">
+        <Search size={12} className="kanban-doc-tree__filter-icon" />
+        <input
+          className="kanban-doc-tree__filter-input"
+          type="text"
+          placeholder="Filter issues..."
+          value={filter}
+          onChange={handleFilterChange}
         />
-      ))}
+      </div>
+
+      {filteredIssues.length === 0 ? (
+        <p className="kanban-doc-tree__empty">No matching issues</p>
+      ) : (
+        STATUS_GROUPS.map((group) => {
+          const groupIssues = groupedIssues.get(group.id) ?? []
+          if (groupIssues.length === 0) return null
+          return (
+            <StatusGroup
+              key={group.id}
+              label={group.label}
+              count={groupIssues.length}
+              defaultExpanded={group.defaultExpanded}
+              issues={groupIssues}
+              onOpenFile={openFile}
+            />
+          )
+        })
+      )}
     </div>
   )
 }

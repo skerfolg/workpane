@@ -14,6 +14,7 @@ export interface NotificationItem {
   workspacePath: string
   workspaceName: string
   patternName: string
+  matchedText: string
   message: string
   timestamp: number
 }
@@ -114,6 +115,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         workspacePath: event.workspacePath,
         workspaceName,
         patternName: event.patternName,
+        matchedText: event.matchedText,
         message: `${event.patternName} in ${workspaceName}`,
         timestamp: Date.now()
       }

@@ -29,10 +29,12 @@ export default function NotificationBanner({
             onClick={() => onClickNotification(n)}
             title={`Go to ${n.workspaceName}`}
           >
-            <span className="notification-banner__icon">&#x1F514;</span>
             <div className="notification-banner__text">
-              <span className="notification-banner__pattern">{n.patternName}</span>
-              <span className="notification-banner__workspace">in {n.workspaceName}</span>
+              <span className="notification-banner__title">Action required</span>
+              <span className="notification-banner__detail">
+                {n.matchedText || n.patternName}
+              </span>
+              <span className="notification-banner__workspace">{n.workspaceName}</span>
             </div>
           </button>
           <button

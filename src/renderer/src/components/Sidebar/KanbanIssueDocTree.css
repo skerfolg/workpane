@@ -12,9 +12,47 @@
   margin: 0;
 }
 
-/* Group container */
-.kanban-doc-tree__group {
-  /* no extra border — section border handles separation */
+/* Filter bar */
+.kanban-doc-tree__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: var(--sp-1) var(--sp-2);
+  padding: 0 var(--sp-2);
+  height: 26px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--tr-fast);
+}
+
+.kanban-doc-tree__filter:focus-within {
+  border-color: var(--accent);
+}
+
+.kanban-doc-tree__filter-icon {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.kanban-doc-tree__filter-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  outline: none;
+  min-width: 0;
+}
+
+.kanban-doc-tree__filter-input::placeholder {
+  color: var(--text-3);
+}
+
+/* Status group */
+.kanban-doc-tree__status-group {
+  margin-top: var(--sp-1);
 }
 
 /* Node base */
@@ -37,14 +75,50 @@
   background-color: var(--bg-3);
 }
 
-/* Parent node (group header) */
-.kanban-doc-tree__node--parent {
+/* Status group header */
+.kanban-doc-tree__node--status-header {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.kanban-doc-tree__status-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-doc-tree__status-count {
+  font-size: var(--fs-2xs);
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  flex-shrink: 0;
+  background: var(--bg-3);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--sp-1);
+  line-height: 16px;
+  min-width: 16px;
+  text-align: center;
+}
+
+/* Issue item */
+.kanban-doc-tree__node--issue {
+  padding-left: calc(var(--sp-3) + 8px);
   font-weight: var(--fw-medium);
+}
+
+/* Issue without linked documents */
+.kanban-doc-tree__node--no-docs {
+  cursor: default;
+  opacity: 0.7;
 }
 
 /* Sub node (file entry) */
 .kanban-doc-tree__node--sub {
-  padding-left: calc(var(--sp-3) + 16px);
+  padding-left: calc(var(--sp-3) + 24px);
   color: var(--text-2);
   font-weight: var(--fw-regular);
 }
@@ -60,6 +134,10 @@
   width: 14px;
   display: flex;
   align-items: center;
+}
+
+.kanban-doc-tree__chevron--empty {
+  visibility: hidden;
 }
 
 /* Short ID */
@@ -78,31 +156,12 @@
   min-width: 0;
 }
 
-/* Status badge */
-.kanban-doc-tree__status-badge {
+/* Document count badge */
+.kanban-doc-tree__doc-count {
   font-size: var(--fs-2xs);
-  font-family: var(--font-sans);
-  font-weight: var(--fw-medium);
-  border-radius: var(--radius-sm);
-  padding: 1px var(--sp-1);
+  font-family: var(--font-mono);
+  color: var(--text-3);
   flex-shrink: 0;
-  text-transform: capitalize;
-  line-height: var(--lh-tight);
-}
-
-.kanban-doc-tree__status-badge--open {
-  background-color: rgba(76, 141, 255, 0.15);
-  color: var(--accent);
-}
-
-.kanban-doc-tree__status-badge--in-progress {
-  background-color: rgba(217, 146, 11, 0.15);
-  color: var(--warning);
-}
-
-.kanban-doc-tree__status-badge--resolved {
-  background-color: rgba(46, 166, 105, 0.15);
-  color: var(--success);
 }
 
 /* File icon */
@@ -127,5 +186,9 @@
 
 /* Children container */
 .kanban-doc-tree__children {
+  /* block stacking */
+}
+
+.kanban-doc-tree__status-children {
   /* block stacking */
 }
