@@ -4,6 +4,11 @@ import os from 'os'
 export class TerminalManager {
   private terminals: Map<string, pty.IPty> = new Map()
   private cachedShell: string | null = null
+  private scrollbackBuffers: Map<string, string[]> = new Map()
+  private scrollbackByteCounts: Map<string, number> = new Map()
+  private terminalWorkspaces: Map<string, string> = new Map()
+  private readonly MAX_BUFFER_BYTES = 1_048_576  // 1MB
+  private approvalDetector: import('./approval-detector').ApprovalDetector | null = null
 
   getDefaultShell(): string {
     if (this.cachedShell) return this.cachedShell
@@ -30,6 +35,35 @@ export class TerminalManager {
     return this.cachedShell
   }
 
+  appendToBuffer(id: string, data: string): void {
+    let buf = this.scrollbackBuffers.get(id)
+    if (!buf) {
+      buf = []
+      this.scrollbackBuffers.set(id, buf)
+    }
+    let byteCount = this.scrollbackByteCounts.get(id) ?? 0
+    buf.push(data)
+    byteCount += Buffer.byteLength(data)
+    while (byteCount > this.MAX_BUFFER_BYTES && buf.length > 0) {
+      const removed = buf.shift()!
+      byteCount -= Buffer.byteLength(removed)
+    }
+    this.scrollbackByteCounts.set(id, byteCount)
+    this.approvalDetector?.check(id, data, this.getWorkspace(id) ?? '')
+  }
+
+  getScrollback(id: string): string {
+    return this.scrollbackBuffers.get(id)?.join('') ?? ''
+  }
+
+  getWorkspace(id: string): string | undefined {
+    return this.terminalWorkspaces.get(id)
+  }
+
+  setApprovalDetector(detector: import('./approval-detector').ApprovalDetector): void {
+    this.approvalDetector = detector
+  }
+
   create(id: string, shell?: string, cwd?: string): void {
     const _t = performance.now()
     console.log(`[PERF][Main] TerminalManager.create start id=${id}`)
@@ -44,13 +78,14 @@ export class TerminalManager {
     }
 
     const term = pty.spawn(s, args, {
-      name: 'xterm-color',
+      name: 'xterm-256color',
       cols: 80,
       rows: 24,
       cwd: resolvedCwd,
       env: process.env as Record<string, string>
     })
     this.terminals.set(id, term)
+    this.terminalWorkspaces.set(id, resolvedCwd)
     console.log(`[PERF][Main] TerminalManager.create done id=${id} shell=${s} ${(performance.now() - _t).toFixed(1)}ms`)
   }
 
@@ -73,6 +108,9 @@ export class TerminalManager {
       term.kill()
       this.terminals.delete(id)
     }
+    this.scrollbackBuffers.delete(id)
+    this.scrollbackByteCounts.delete(id)
+    this.terminalWorkspaces.delete(id)
   }
 
   get(id: string): pty.IPty | undefined {
@@ -87,5 +125,8 @@ export class TerminalManager {
     for (const [id] of this.terminals) {
       this.kill(id)
     }
+    this.scrollbackBuffers.clear()
+    this.scrollbackByteCounts.clear()
+    this.terminalWorkspaces.clear()
   }
 }

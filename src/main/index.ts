@@ -16,6 +16,7 @@ import { ApiServer } from './api-server'
 import { SkillsManager } from './skills-manager'
 import { CrashRecovery } from './crash-recovery'
 import { assertWithinWorkspace } from './path-validator'
+import { ApprovalDetector } from './approval-detector'
 import * as path from 'path'
 
 const terminalManager = new TerminalManager()
@@ -104,6 +105,7 @@ ipcMain.handle('terminal:create', (_event, { id, shell, cwd }: { id: string; she
   if (!term) return
 
   term.onData((data) => {
+    terminalManager.appendToBuffer(id, data)
     try {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('terminal:data', { id, data })
@@ -135,6 +137,10 @@ ipcMain.on('terminal:resize', (_event, { id, cols, rows }: { id: string; cols: n
 
 ipcMain.handle('terminal:kill', (_event, { id }: { id: string }) => {
   terminalManager.kill(id)
+})
+
+ipcMain.handle('terminal:get-scrollback', (_event, { id }: { id: string }) => {
+  return terminalManager.getScrollback(id)
 })
 
 // IPC handlers for settings
@@ -510,6 +516,16 @@ app.whenReady().then(() => {
 
   console.log(`[PERF][Main] app:ready → createWindow`)
   createWindow()
+
+  const approvalDetector = new ApprovalDetector((event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal:approval-detected', event)
+    }
+  })
+  terminalManager.setApprovalDetector(approvalDetector)
+  const customPatterns = (settingsManager.get('notification.customPatterns') ?? []) as Array<{ name: string; pattern: string }>
+  approvalDetector.setCustomPatterns(customPatterns)
+
   console.log(`[PERF][Main] app:ready → apiServer.start`)
   apiServer.start()
   console.log(`[PERF][Main] app:ready done ${(performance.now() - _appReadyStart).toFixed(1)}ms`)

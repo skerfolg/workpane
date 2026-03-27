@@ -29,6 +29,11 @@ interface SettingsSchema {
   kanban: {
     columns: { id: string; label: string }[]
   }
+  notification: {
+    enabled: boolean
+    sound: boolean
+    customPatterns: Array<{ name: string; pattern: string }>
+  }
 }
 
 const defaults: SettingsSchema = {
@@ -63,6 +68,11 @@ const defaults: SettingsSchema = {
       { id: 'in-progress', label: 'In Progress' },
       { id: 'resolved', label: 'Resolved' }
     ]
+  },
+  notification: {
+    enabled: true,
+    sound: true,
+    customPatterns: []
   }
 }
 
