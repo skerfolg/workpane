@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react'
+import { Columns2, Rows2, Grid2x2 } from 'lucide-react'
 import { useTerminals } from '../../contexts/TerminalContext'
 import SplitLayoutRenderer from '../Terminal/SplitLayoutRenderer'
 import type { SplitDirection } from '../../types/terminal-layout'
@@ -9,7 +10,7 @@ type EdgeZone = 'top' | 'bottom' | 'left' | 'right' | null
 const EDGE_ZONE_SIZE = 24
 
 function TerminalArea(): React.JSX.Element {
-  const { layoutTree, createTerminal, applyPresetLayout, isDraggingTab, setDragState, splitRootAndMoveTerminal, groups, activeGroupId } = useTerminals()
+  const { layoutTree, applyPresetLayout, isDraggingTab, setDragState, splitRootAndMoveTerminal, groups, activeGroupId } = useTerminals()
   const activeGroupName = groups.find(g => g.id === activeGroupId)?.name ?? ''
   const [edgeZone, setEdgeZone] = useState<EdgeZone>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -102,56 +103,55 @@ function TerminalArea(): React.JSX.Element {
           borderBottom: '1px solid var(--color-border)',
           display: 'flex',
           alignItems: 'center',
-          paddingLeft: '8px',
+          padding: '0 8px',
           gap: '4px',
           flexShrink: 0,
           overflow: 'hidden'
         }}
       >
         {/* Active group name */}
-        <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)', marginRight: '8px' }}>
+        <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)', flexShrink: 0 }}>
           {activeGroupName}
         </span>
 
-        {/* Preset layout buttons */}
-        {(['2col', '2row', '2x2'] as const).map((preset) => (
-          <button
-            key={preset}
-            onClick={() => applyPresetLayout(preset)}
-            title={`Apply ${preset} layout`}
-            style={{
-              background: 'none',
-              border: '1px solid var(--color-border)',
-              borderRadius: '3px',
-              color: 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              fontSize: '11px',
-              padding: '2px 6px',
-              flexShrink: 0
-            }}
-          >
-            {preset}
-          </button>
-        ))}
-
         <div style={{ flex: 1 }} />
 
-        {/* Add terminal button — adds to the currently focused panel */}
+        {/* Preset layout buttons */}
         <button
-          onClick={createTerminal}
-          title="New Terminal"
+          onClick={() => applyPresetLayout('2col')}
+          title="2 Columns"
           style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--color-text-secondary)',
-            cursor: 'pointer',
-            fontSize: '18px',
-            lineHeight: '1',
-            padding: '0 6px',
-            flexShrink: 0
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', borderRadius: '3px',
+            color: 'var(--color-text-secondary)', cursor: 'pointer',
+            padding: '4px', flexShrink: 0
           }}
         >
-          +
+          <Columns2 size={14} />
+        </button>
+        <button
+          onClick={() => applyPresetLayout('2row')}
+          title="2 Rows"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', borderRadius: '3px',
+            color: 'var(--color-text-secondary)', cursor: 'pointer',
+            padding: '4px', flexShrink: 0
+          }}
+        >
+          <Rows2 size={14} />
+        </button>
+        <button
+          onClick={() => applyPresetLayout('2x2')}
+          title="2x2 Grid"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', borderRadius: '3px',
+            color: 'var(--color-text-secondary)', cursor: 'pointer',
+            padding: '4px 8px 4px 4px', flexShrink: 0
+          }}
+        >
+          <Grid2x2 size={14} />
         </button>
       </div>
 

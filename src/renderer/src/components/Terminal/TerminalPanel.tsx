@@ -1,8 +1,10 @@
-import React, { useState, useCallback, useRef, memo } from 'react'
+import React, { useState, useCallback, useRef, useEffect, memo } from 'react'
+import { Globe, TerminalSquare, Plus, Columns2, Rows2 } from 'lucide-react'
 import { LeafNode } from '../../types/terminal-layout'
 import { useTerminals } from '../../contexts/TerminalContext'
 import { useEditor } from '../../contexts/EditorContext'
 import { XTerminal } from './XTerminal'
+import BrowserPanel from './BrowserPanel'
 import ContextMenu, { ContextMenuItem } from '../ContextMenu/ContextMenu'
 
 interface TerminalPanelProps {
@@ -42,6 +44,8 @@ const ZONE_OPACITY: Record<NonNullable<DropZone>, number> = {
 function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
   const {
     terminals,
+    browsers,
+    createTerminal,
     splitPanel,
     closePanel,
     moveTerminalToPanel,
@@ -52,7 +56,9 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
     setFocusedPanel,
     focusedPanelId,
     isDraggingTab,
-    setDragState
+    setDragState,
+    createBrowser,
+    removeBrowser
   } = useTerminals()
 
   const { openFile } = useEditor()
@@ -69,6 +75,19 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
 
   const isFocused = focusedPanelId === node.panelId
 
+  // Listen for MCP browser:open-requested IPC events
+  useEffect(() => {
+    const ipc = (window as any).electron?.ipcRenderer
+    if (!ipc) return
+    const handler = (_event: unknown, data: { id: string; url: string }) => {
+      createBrowser(data.url)
+    }
+    ipc.on('browser:open-requested', handler)
+    return () => {
+      ipc.removeListener('browser:open-requested', handler)
+    }
+  }, [createBrowser])
+
   // When activeTerminalId changes, mark it as mounted
   if (node.activeTerminalId && !mountedIds.has(node.activeTerminalId)) {
     setMountedIds(prev => new Set(prev).add(node.activeTerminalId!))
@@ -82,11 +101,6 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
     setFocusedPanel(node.panelId)
     setActiveTerminalInPanel(node.panelId, terminalId)
   }, [node.panelId, setFocusedPanel, setActiveTerminalInPanel])
-
-  const handleTabClose = useCallback((e: React.MouseEvent, terminalId: string) => {
-    e.stopPropagation()
-    removeTerminal(terminalId)
-  }, [removeTerminal])
 
   const handleTabBarContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -116,6 +130,11 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
       },
       { label: '', onClick: () => {}, divider: true },
       {
+        label: 'New Browser Tab',
+        onClick: () => createBrowser()
+      },
+      { label: '', onClick: () => {}, divider: true },
+      {
         label: 'Rename Terminal',
         onClick: () => {
           if (!activeTermId) return
@@ -133,7 +152,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
         danger: true
       }
     ]
-  }, [node.panelId, node.activeTerminalId, terminals, splitPanel, closePanel, renameTerminal, removeTerminal])
+  }, [node.panelId, node.activeTerminalId, terminals, splitPanel, closePanel, renameTerminal, removeTerminal, createBrowser])
 
   // Tab drag source handlers — set/clear global drag state
   // IMPORTANT: Delay setDragState so the overlay doesn't insert into the DOM during dragstart,
@@ -231,6 +250,19 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
     .map((id) => terminals.find((t) => t.id === id))
     .filter((t): t is NonNullable<typeof t> => t != null)
 
+  const panelBrowsers = (node.browserIds ?? [])
+    .map((id) => browsers.find((b) => b.id === id))
+    .filter((b): b is NonNullable<typeof b> => b != null)
+
+  const allTabs = [
+    ...panelTerminals.map((t) => ({ id: t.id, type: 'terminal' as const, label: t.name })),
+    ...panelBrowsers.map((b) => ({
+      id: b.id,
+      type: 'browser' as const,
+      label: b.title || (() => { try { return new URL(b.url).hostname || 'New Tab' } catch { return 'New Tab' } })()
+    }))
+  ]
+
   return (
     <div
       className="terminal-panel"
@@ -266,24 +298,24 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
             : '1px solid var(--color-border)',
           display: 'flex',
           alignItems: 'center',
-          paddingLeft: '4px',
+          padding: '0 4px',
           gap: '2px',
           flexShrink: 0,
           overflow: 'hidden',
           transition: 'background-color 0.1s, border-bottom 0.1s'
         }}
       >
-        {panelTerminals.map((terminal) => {
-          const isActive = terminal.id === node.activeTerminalId
+        {allTabs.map((tab) => {
+          const isActive = tab.id === node.activeTerminalId
           return (
             <div
-              key={terminal.id}
+              key={tab.id}
               role="tab"
               aria-selected={isActive}
-              draggable
-              onClick={() => handleTabClick(terminal.id)}
-              onDragStart={(e) => handleDragStart(e, terminal.id)}
-              onDragEnd={handleDragEnd}
+              draggable={tab.type === 'terminal'}
+              onClick={() => handleTabClick(tab.id)}
+              onDragStart={tab.type === 'terminal' ? (e) => handleDragStart(e, tab.id) : undefined}
+              onDragEnd={tab.type === 'terminal' ? handleDragEnd : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -304,10 +336,20 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
                 userSelect: 'none'
               }}
             >
-              <span>{terminal.name}</span>
+              {tab.type === 'browser' && (
+                <Globe size={12} style={{ flexShrink: 0, opacity: 0.7 }} />
+              )}
+              <span>{tab.label}</span>
               <button
-                onClick={(e) => handleTabClose(e, terminal.id)}
-                title="Close Terminal"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (tab.type === 'browser') {
+                    removeBrowser(tab.id)
+                  } else {
+                    removeTerminal(tab.id)
+                  }
+                }}
+                title={tab.type === 'browser' ? 'Close Browser Tab' : 'Close Terminal'}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -330,11 +372,72 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
           )
         })}
 
-        {panelTerminals.length === 0 && (
+        {allTabs.length === 0 && (
           <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', paddingLeft: '4px' }}>
             Empty
           </span>
         )}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Panel action buttons */}
+        <button
+          onClick={(e) => { e.stopPropagation(); createTerminal() }}
+          title="New Terminal"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', borderRadius: '3px',
+            color: 'var(--color-text-secondary)', cursor: 'pointer',
+            padding: '2px', flexShrink: 0, opacity: 0.7
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+        >
+          <TerminalSquare size={13} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); createBrowser() }}
+          title="New Browser"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', borderRadius: '3px',
+            color: 'var(--color-text-secondary)', cursor: 'pointer',
+            padding: '2px', flexShrink: 0, opacity: 0.7
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+        >
+          <Globe size={13} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); splitPanel(node.panelId, 'vertical') }}
+          title="Split Vertical"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', borderRadius: '3px',
+            color: 'var(--color-text-secondary)', cursor: 'pointer',
+            padding: '2px', flexShrink: 0, opacity: 0.7
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+        >
+          <Columns2 size={13} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); splitPanel(node.panelId, 'horizontal') }}
+          title="Split Horizontal"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', borderRadius: '3px',
+            color: 'var(--color-text-secondary)', cursor: 'pointer',
+            padding: '2px', marginRight: '6px', flexShrink: 0, opacity: 0.7
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+        >
+          <Rows2 size={13} />
+        </button>
       </div>
 
       {/* Terminal content area */}
@@ -361,7 +464,24 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
           )
         })}
 
-        {panelTerminals.length === 0 && (
+        {panelBrowsers.map((browser) => {
+          const isActive = browser.id === node.activeTerminalId
+          return (
+            <div
+              key={browser.id}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: isActive ? 'block' : 'none',
+                height: '100%'
+              }}
+            >
+              <BrowserPanel id={browser.id} isActive={isActive} />
+            </div>
+          )
+        })}
+
+        {allTabs.length === 0 && (
           <div
             style={{
               display: 'flex',

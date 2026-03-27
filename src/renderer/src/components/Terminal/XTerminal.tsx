@@ -48,11 +48,11 @@ function isAppShortcut(e: KeyboardEvent): boolean {
   if (!ctrl) return false
 
   // Ctrl+Shift combos: P (palette), T (new terminal), W (switch workspace),
-  // F (search), K (kanban), \ (split horizontal), C (copy), V (paste)
+  // F (search), K (kanban), \ (split horizontal)
+  // Note: C (copy) and V (paste) are handled directly in attachCustomKeyEventHandler
   if (shift && (
     e.key === 'P' || e.key === 'T' || e.key === 'W' ||
-    e.key === 'F' || e.key === 'K' || e.key === '\\' ||
-    e.key === 'C' || e.key === 'V'
+    e.key === 'F' || e.key === 'K' || e.key === '\\'
   )) return true
 
   // Ctrl combos: ` (toggle terminal), \ (split vertical), B (sidebar),
@@ -102,8 +102,22 @@ function createFilePathLinkProvider(
             const pathOnly = text.replace(/:\d+(?::\d+)?$/, '')
             const wsPath = getWorkspacePath()
             let resolved = pathOnly
+
             if (wsPath && !pathOnly.match(/^[A-Za-z]:[/\\]/) && !pathOnly.startsWith('/')) {
-              resolved = wsPath.replace(/\\/g, '/') + '/' + pathOnly
+              const normalWs = wsPath.replace(/\\/g, '/')
+              const normalPath = pathOnly.replace(/\\/g, '/')
+              const wsBasename = normalWs.split('/').pop() ?? ''
+
+              // Avoid path doubling: if the relative path contains the workspace
+              // basename as a directory segment, strip everything up to it.
+              // e.g. "Workspace/EoBeamAnalyzer/.omc/foo.md" → ".omc/foo.md"
+              const segments = normalPath.split('/')
+              const wsIdx = wsBasename ? segments.indexOf(wsBasename) : -1
+              if (wsIdx >= 0 && wsIdx < 3) {
+                resolved = normalWs + '/' + segments.slice(wsIdx + 1).join('/')
+              } else {
+                resolved = normalWs + '/' + normalPath
+              }
             }
             onOpenFile(resolved)
           }
@@ -119,6 +133,7 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const webglAddonRef = useRef<WebglAddon | null>(null)
   const [contextMenu, setContextMenu] = useState<TerminalContextMenu | null>(null)
 
   const handleCopy = useCallback(() => {
@@ -132,7 +147,6 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
   }, [])
 
   const handlePaste = useCallback(() => {
-    const term = terminalRef.current
     if (!clipboardApi) return
     const text = clipboardApi.readText()
     if (text) {
@@ -174,14 +188,18 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
       const ctrl = e.ctrlKey || e.metaKey
       const shift = e.shiftKey
 
-      // Ctrl+Shift+C — copy selection
-      if (ctrl && shift && e.key === 'C') {
-        handleCopy()
-        return false
+      // Ctrl+C or Ctrl+Shift+C — copy if selection exists, otherwise send SIGINT
+      if (ctrl && (e.key === 'c' || e.key === 'C')) {
+        if (term.hasSelection()) {
+          handleCopy()
+          return false
+        }
+        // No selection: let Ctrl+C pass to xterm as SIGINT (only without shift)
+        return !shift
       }
 
-      // Ctrl+Shift+V — paste from clipboard
-      if (ctrl && shift && e.key === 'V') {
+      // Ctrl+V or Ctrl+Shift+V — paste from clipboard
+      if (ctrl && (e.key === 'v' || e.key === 'V')) {
         handlePaste()
         return false
       }
@@ -220,13 +238,33 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
 
     term.open(containerRef.current)
 
-    try {
-      const webglAddon = new WebglAddon()
-      webglAddon.onContextLoss(() => webglAddon.dispose())
-      term.loadAddon(webglAddon)
-    } catch (e) {
-      console.warn('[XTerminal] WebGL addon failed, using DOM renderer:', e)
+    // Load WebGL renderer with context-loss recovery
+    const loadWebgl = (): void => {
+      try {
+        // Dispose previous addon if any
+        webglAddonRef.current?.dispose()
+        webglAddonRef.current = null
+
+        const webglAddon = new WebglAddon()
+        webglAddon.onContextLoss(() => {
+          console.warn('[XTerminal] WebGL context lost, falling back to DOM renderer')
+          webglAddon.dispose()
+          webglAddonRef.current = null
+          // Force DOM renderer refresh
+          term.refresh(0, term.rows - 1)
+          // Try to reload WebGL after a short delay
+          setTimeout(() => {
+            if (terminalRef.current === term) loadWebgl()
+          }, 1000)
+        })
+        term.loadAddon(webglAddon)
+        webglAddonRef.current = webglAddon
+      } catch (e) {
+        console.warn('[XTerminal] WebGL addon failed, using DOM renderer:', e)
+        webglAddonRef.current = null
+      }
     }
+    loadWebgl()
 
     terminalRef.current = term
     fitAddonRef.current = fitAddon
@@ -295,6 +333,8 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
     return () => {
       removeDataListener?.()
       removeExitListener?.()
+      webglAddonRef.current?.dispose()
+      webglAddonRef.current = null
       term.dispose()
       terminalRef.current = null
       fitAddonRef.current = null
@@ -322,14 +362,32 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
     return () => resizeObserver.disconnect()
   }, [id])
 
-  // Re-fit and refresh when becoming active (fixes WebGL canvas after tab switch)
+  // Re-fit and refresh when becoming active (fixes WebGL canvas after tab switch / HMR)
   useEffect(() => {
-    if (isActive && fitAddonRef.current && terminalRef.current) {
-      setTimeout(() => {
+    if (!isActive || !fitAddonRef.current || !terminalRef.current) return
+
+    // Immediate fit + refresh for snappy tab switch
+    const rafId = requestAnimationFrame(() => {
+      try {
         fitAddonRef.current?.fit()
-        const term = terminalRef.current
-        if (term) term.refresh(0, term.rows - 1)
-      }, 50)
+      } catch { /* ignore */ }
+      const term = terminalRef.current
+      if (term) term.refresh(0, term.rows - 1)
+    })
+
+    // Delayed second pass: catches cases where layout hasn't fully settled
+    // (e.g. after HMR or split resize animation)
+    const timerId = setTimeout(() => {
+      try {
+        fitAddonRef.current?.fit()
+      } catch { /* ignore */ }
+      const term = terminalRef.current
+      if (term) term.refresh(0, term.rows - 1)
+    }, 150)
+
+    return () => {
+      cancelAnimationFrame(rafId)
+      clearTimeout(timerId)
     }
   }, [isActive])
 
