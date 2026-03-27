@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
-import type { DocEntry, DocGroup, Issue, IssueStatus, CreateIssueData, UpdateIssueData } from '../../../shared/types'
+import type { DocEntry, DocGroup, Issue, IssueStatus } from '../../../shared/types'
 
 // Re-export for consumers
-export type { DocEntry, DocGroup, Issue, IssueStatus, CreateIssueData, UpdateIssueData }
+export type { DocEntry, DocGroup, Issue, IssueStatus }
 
 interface IssueContextValue {
   groups: DocGroup[]
@@ -12,10 +12,6 @@ interface IssueContextValue {
   sourceFilter: 'standard' | 'project' | null
   setSourceFilter: (filter: 'standard' | 'project' | null) => void
   loadDocs: (projectRoot: string) => Promise<void>
-  createIssue: (data: CreateIssueData) => Promise<void>
-  updateIssue: (filePath: string, updates: UpdateIssueData) => Promise<void>
-  deleteIssue: (filePath: string) => Promise<void>
-  updateIssueStatus: (filePath: string, status: string) => Promise<void>
   // Legacy compat
   issues: Issue[]
 }
@@ -62,36 +58,6 @@ export function IssueProvider({ children }: { children: React.ReactNode }): Reac
       loadInFlightRef.current = false
     }
   }, [])
-
-  // CRUD methods calling through to preload API
-  const createIssue = useCallback(async (data: CreateIssueData): Promise<void> => {
-    const issuesApi = (window as any).issues
-    if (!issuesApi) return
-    const docsPath = currentProjectRoot.current ? `${currentProjectRoot.current}/docs` : ''
-    await issuesApi.create({ ...data, docsPath })
-    if (currentProjectRoot.current) await loadDocs(currentProjectRoot.current, true)
-  }, [loadDocs])
-
-  const updateIssue = useCallback(async (filePath: string, updates: UpdateIssueData): Promise<void> => {
-    const issuesApi = (window as any).issues
-    if (!issuesApi) return
-    await issuesApi.update(filePath, updates)
-    if (currentProjectRoot.current) await loadDocs(currentProjectRoot.current, true)
-  }, [loadDocs])
-
-  const deleteIssue = useCallback(async (filePath: string): Promise<void> => {
-    const issuesApi = (window as any).issues
-    if (!issuesApi) return
-    await issuesApi.delete(filePath)
-    if (currentProjectRoot.current) await loadDocs(currentProjectRoot.current, true)
-  }, [loadDocs])
-
-  const updateIssueStatus = useCallback(async (filePath: string, status: string): Promise<void> => {
-    const issuesApi = (window as any).issues
-    if (!issuesApi) return
-    await issuesApi.updateStatus(filePath, status)
-    if (currentProjectRoot.current) await loadDocs(currentProjectRoot.current, true)
-  }, [loadDocs])
 
   // Phase 2: Listen for background title enrichment updates
   useEffect(() => {
@@ -288,10 +254,6 @@ export function IssueProvider({ children }: { children: React.ReactNode }): Reac
       sourceFilter,
       setSourceFilter,
       loadDocs,
-      createIssue,
-      updateIssue,
-      deleteIssue,
-      updateIssueStatus,
       issues
     }}>
       {children}

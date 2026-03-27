@@ -59,6 +59,7 @@ export interface UpdateIssueData {
 // Kanban issue (separate entity from file-based docs)
 export interface KanbanIssue {
   id: string
+  hash: string           // 7-char hex hash for artifact auto-linking
   title: string
   description: string
   status: string

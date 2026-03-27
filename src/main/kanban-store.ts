@@ -2,6 +2,15 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { KanbanStore, KanbanIssue, ColumnDef, PromptTemplate, Prompt } from '../shared/types'
 
+function generateHash(): string {
+  const chars = '0123456789abcdef'
+  let hash = ''
+  for (let i = 0; i < 7; i++) {
+    hash += chars[Math.floor(Math.random() * 16)]
+  }
+  return hash
+}
+
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'todo', label: 'TO DO' },
   { id: 'in-progress', label: 'IN PROGRESS' },
@@ -62,6 +71,17 @@ export async function loadStore(workspacePath: string): Promise<KanbanStore> {
       columns: parsed.columns ?? DEFAULT_COLUMNS,
       promptTemplates: parsed.promptTemplates ?? [DEFAULT_TEMPLATE]
     }
+    // Migrate: ensure all issues have a hash
+    let migrated = false
+    for (const issue of result.issues) {
+      if (!issue.hash) {
+        issue.hash = generateHash()
+        migrated = true
+      }
+    }
+    if (migrated) {
+      saveStore(workspacePath, result)
+    }
     storeCache.set(workspacePath, result)
     console.log(`[PERF][Main] loadStore done issues=${result.issues.length} ${(performance.now() - _t).toFixed(1)}ms`)
     return result
@@ -103,6 +123,7 @@ export async function createIssue(
   const now = new Date().toISOString()
   const issue: KanbanIssue = {
     id: crypto.randomUUID(),
+    hash: generateHash(),
     title: data.title,
     description: data.description ?? '',
     status: data.status ?? 'todo',
@@ -164,6 +185,7 @@ export function generatePrompt(issue: KanbanIssue, template: PromptTemplate): Pr
     .replace(/\{\{title\}\}/g, issue.title)
     .replace(/\{\{description\}\}/g, issue.description)
     .replace(/\{\{issueId\}\}/g, issue.id)
+    .replace(/\{\{hash\}\}/g, issue.hash ?? '')
     .replace(/\{\{slug\}\}/g, slug)
 
   return {
@@ -244,7 +266,7 @@ export async function autoLinkDocuments(
           await walk(fullPath)
         }
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
-        if (entry.name.includes(issue!.id) || (slug && entry.name.includes(slug))) {
+        if (entry.name.includes(issue!.hash) || (slug && entry.name.includes(slug))) {
           linked.push(fullPath)
         }
       }
