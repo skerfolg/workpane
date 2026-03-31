@@ -89,7 +89,7 @@
       "target": [
         "dmg"
       ],
-      "icon": "resources/icon.ico",
+      "icon": "resources/icon.png",
       "category": "public.app-category.developer-tools"
     },
     "linux": {
@@ -97,7 +97,7 @@
         "AppImage",
         "deb"
       ],
-      "icon": "resources/icon.ico",
+      "icon": "resources/icon.png",
       "category": "Development"
     },
     "publish": {
