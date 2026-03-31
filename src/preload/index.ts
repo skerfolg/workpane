@@ -15,11 +15,12 @@ const terminalAPI = {
     ipcRenderer.send('terminal:resize', { id, cols, rows }),
   kill: (id: string) =>
     ipcRenderer.invoke('terminal:kill', { id }),
-  onData: (callback: (id: string, data: string) => void) => {
+  onData: (callback: (id: string, data: string) => void, terminalId?: string) => {
+    const channel = terminalId ? `terminal:data:${terminalId}` : 'terminal:data'
     const handler = (_event: Electron.IpcRendererEvent, { id, data }: { id: string; data: string }) =>
       callback(id, data)
-    ipcRenderer.on('terminal:data', handler)
-    return () => ipcRenderer.removeListener('terminal:data', handler)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
   },
   onExit: (callback: (id: string, exitCode: number) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, { id, exitCode }: { id: string; exitCode: number }) =>
@@ -127,8 +128,15 @@ const searchAPI = {
 const updaterAPI = {
   onUpdateAvailable: (callback: (info: unknown) => void) =>
     ipcRenderer.on('updater:update-available', (_e, info) => callback(info)),
+  onDownloadProgress: (callback: (progress: unknown) => void) =>
+    ipcRenderer.on('updater:download-progress', (_e, progress) => callback(progress)),
+  onUpdateDownloaded: (callback: () => void) =>
+    ipcRenderer.on('updater:update-downloaded', () => callback()),
   onUpdateError: (callback: (err: unknown) => void) =>
-    ipcRenderer.on('updater:error', (_e, err) => callback(err))
+    ipcRenderer.on('updater:error', (_e, err) => callback(err)),
+  download: () => ipcRenderer.invoke('updater:download'),
+  install: () => ipcRenderer.invoke('updater:install'),
+  check: () => ipcRenderer.invoke('updater:check')
 }
 
 const skillsAPI = {

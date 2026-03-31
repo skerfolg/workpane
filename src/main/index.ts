@@ -67,6 +67,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
+    icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -109,18 +110,18 @@ ipcMain.handle('terminal:create', (_event, { id, shell, cwd }: { id: string; she
   const term = terminalManager.get(id)
   if (!term) return
 
-  term.onData((data) => {
+  const onDataDisposable = term.onData((data) => {
     terminalManager.appendToBuffer(id, data)
     try {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('terminal:data', { id, data })
+        mainWindow.webContents.send(`terminal:data:${id}`, { id, data })
       }
     } catch {
       // Window already destroyed during shutdown — safe to ignore
     }
   })
 
-  term.onExit(({ exitCode }) => {
+  const onExitDisposable = term.onExit(({ exitCode }) => {
     try {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('terminal:exit', { id, exitCode })
@@ -130,6 +131,9 @@ ipcMain.handle('terminal:create', (_event, { id, shell, cwd }: { id: string; she
     }
     terminalManager.kill(id)
   })
+
+  terminalManager.addDisposable(id, onDataDisposable)
+  terminalManager.addDisposable(id, onExitDisposable)
 })
 
 ipcMain.on('terminal:write', (_event, { id, data }: { id: string; data: string }) => {

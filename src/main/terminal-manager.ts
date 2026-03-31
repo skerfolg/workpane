@@ -7,7 +7,8 @@ export class TerminalManager {
   private scrollbackBuffers: Map<string, string[]> = new Map()
   private scrollbackByteCounts: Map<string, number> = new Map()
   private terminalWorkspaces: Map<string, string> = new Map()
-  private readonly MAX_BUFFER_BYTES = 1_048_576  // 1MB
+  private readonly MAX_BUFFER_BYTES = 524_288  // 512KB
+  private terminalDisposables: Map<string, Array<{ dispose: () => void }>> = new Map()
   private approvalDetector: import('./approval-detector').ApprovalDetector | null = null
 
   getDefaultShell(): string {
@@ -53,7 +54,31 @@ export class TerminalManager {
   }
 
   getScrollback(id: string): string {
-    return this.scrollbackBuffers.get(id)?.join('') ?? ''
+    const buf = this.scrollbackBuffers.get(id)
+    if (!buf || buf.length === 0) return ''
+
+    // Fast path: if total bytes under limit, join directly
+    const byteCount = this.scrollbackByteCounts.get(id) ?? 0
+    const MAX_RETURN = 262_144  // 256KB
+    if (byteCount <= MAX_RETURN) return buf.join('')
+
+    // Slow path: return last 256KB
+    const result: string[] = []
+    let bytes = 0
+    for (let i = buf.length - 1; i >= 0 && bytes < MAX_RETURN; i--) {
+      result.unshift(buf[i])
+      bytes += Buffer.byteLength(buf[i])
+    }
+    return result.join('')
+  }
+
+  addDisposable(id: string, disposable: { dispose: () => void }): void {
+    let list = this.terminalDisposables.get(id)
+    if (!list) {
+      list = []
+      this.terminalDisposables.set(id, list)
+    }
+    list.push(disposable)
   }
 
   getWorkspace(id: string): string | undefined {
@@ -103,6 +128,14 @@ export class TerminalManager {
   }
 
   kill(id: string): void {
+    // Dispose listeners first to prevent callbacks during shutdown
+    const disposables = this.terminalDisposables.get(id)
+    if (disposables) {
+      for (const d of disposables) {
+        try { d.dispose() } catch { /* ignore */ }
+      }
+      this.terminalDisposables.delete(id)
+    }
     const term = this.terminals.get(id)
     if (term) {
       term.kill()
@@ -128,5 +161,6 @@ export class TerminalManager {
     this.scrollbackBuffers.clear()
     this.scrollbackByteCounts.clear()
     this.terminalWorkspaces.clear()
+    this.terminalDisposables.clear()
   }
 }

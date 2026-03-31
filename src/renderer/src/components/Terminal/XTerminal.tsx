@@ -177,7 +177,7 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
       fontSize: 14,
       fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace",
       cursorBlink: true,
-      scrollback: 5000,
+      scrollback: 3000,
       rightClickSelectsWord: true
     })
 
@@ -288,7 +288,7 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
         } else {
           queue.push(data)
         }
-      })
+      }, id)
 
       removeExitListener = api.onExit((termId: string, exitCode: number) => {
         if (termId === id) {
@@ -365,33 +365,35 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
   }, [id])
 
   // Re-fit and refresh when becoming active (fixes WebGL canvas after tab switch / HMR)
+  // Two-tier approach: Tier 1 uses clearTextureAtlas (lightweight ~1ms),
+  // Tier 2 (dispose/reload) is a documented fallback if Tier 1 proves insufficient.
   useEffect(() => {
     if (!isActive || !fitAddonRef.current || !terminalRef.current) return
 
-    // Immediate fit + refresh for snappy tab switch
+    const term = terminalRef.current
+    const fitAddon = fitAddonRef.current
+
     const rafId = requestAnimationFrame(() => {
       try {
-        fitAddonRef.current?.fit()
+        fitAddon.fit()
       } catch { /* ignore */ }
-      const term = terminalRef.current
-      if (term) term.refresh(0, term.rows - 1)
+
+      // Tier 1: Clear texture atlas to force glyph re-render without destroying GL context
+      if (webglAddonRef.current) {
+        try {
+          (webglAddonRef.current as any).clearTextureAtlas()
+        } catch { /* ignore — API may not be available */ }
+      }
+
+      term.refresh(0, term.rows - 1)
+
+      // Sync PTY dimensions after fit
+      const api = (window as any).terminal
+      if (api) api.resize(id, term.cols, term.rows)
     })
 
-    // Delayed second pass: catches cases where layout hasn't fully settled
-    // (e.g. after HMR or split resize animation)
-    const timerId = setTimeout(() => {
-      try {
-        fitAddonRef.current?.fit()
-      } catch { /* ignore */ }
-      const term = terminalRef.current
-      if (term) term.refresh(0, term.rows - 1)
-    }, 150)
-
-    return () => {
-      cancelAnimationFrame(rafId)
-      clearTimeout(timerId)
-    }
-  }, [isActive])
+    return () => cancelAnimationFrame(rafId)
+  }, [isActive, id])
 
   // Right-click context menu
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
