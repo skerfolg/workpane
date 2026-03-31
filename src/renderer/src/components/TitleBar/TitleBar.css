@@ -25,9 +25,10 @@
 }
 
 .titlebar-app-icon {
-  font-size: var(--fs-md);
-  color: var(--accent);
-  line-height: 1;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .titlebar-app-name {

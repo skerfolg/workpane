@@ -10,6 +10,7 @@ import {
   Bell
 } from 'lucide-react'
 import { useNotifications } from '../../contexts/NotificationContext'
+import logoIcon from '../../assets/logo.png'
 import './TitleBar.css'
 
 interface TitleBarProps {
@@ -60,7 +61,7 @@ export default function TitleBar({
     <div className="titlebar">
       {/* Left: App name */}
       <div className="titlebar-left">
-        <span className="titlebar-app-icon">◆</span>
+        <img src={logoIcon} alt="WorkPane" className="titlebar-app-icon" />
         <span className="titlebar-app-name">WorkPane</span>
       </div>
 

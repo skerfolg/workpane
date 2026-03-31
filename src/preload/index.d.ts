@@ -200,6 +200,23 @@ export interface SkillsAPI {
   refreshRegistry: () => Promise<import('../shared/types').SkillRegistry>
 }
 
+export interface DownloadProgress {
+  percent: number
+  bytesPerSecond: number
+  transferred: number
+  total: number
+}
+
+export interface UpdaterAPI {
+  onUpdateAvailable: (callback: (info: { version: string; releaseNotes?: string }) => void) => void
+  onDownloadProgress: (callback: (progress: DownloadProgress) => void) => void
+  onUpdateDownloaded: (callback: () => void) => void
+  onUpdateError: (callback: (err: unknown) => void) => void
+  download: () => Promise<void>
+  install: () => Promise<void>
+  check: () => Promise<void>
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -212,6 +229,7 @@ declare global {
     shell: ShellAPI
     search: SearchAPI
     theme: ThemeAPI
+    updater: UpdaterAPI
     kanban: KanbanAPI
     browser: BrowserAPI
     skills: SkillsAPI
