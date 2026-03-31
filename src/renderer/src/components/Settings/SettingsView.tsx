@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import './SettingsView.css'
 import { useTheme } from '../../contexts/ThemeContext'
+import i18n from '../../i18n'
 
 interface NotificationPattern {
   name: string
@@ -80,6 +81,10 @@ export default function SettingsView(): React.JSX.Element {
     window.settings.get().then((raw) => {
       if (raw && typeof raw === 'object') {
         const s = raw as Record<string, unknown>
+        const general = s.general as Record<string, unknown> | undefined
+        if (general?.language && typeof general.language === 'string') {
+          i18n.changeLanguage(general.language)
+        }
         setSettings((prev) => ({
           general: { ...prev.general, ...(s.general as object ?? {}) },
           appearance: { ...prev.appearance, ...(s.appearance as object ?? {}) },
@@ -181,7 +186,11 @@ export default function SettingsView(): React.JSX.Element {
                 <div className="settings-row__control">
                   <select
                     value={settings.general.language}
-                    onChange={(e) => setSetting('general', 'language', e.target.value)}
+                    onChange={(e) => {
+                      const lang = e.target.value
+                      setSetting('general', 'language', lang)
+                      i18n.changeLanguage(lang)
+                    }}
                   >
                     <option value="en">English</option>
                     <option value="ko">Korean</option>

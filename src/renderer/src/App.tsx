@@ -5,6 +5,8 @@ import { EditorProvider, useEditor } from './contexts/EditorContext'
 import { IssueProvider, useIssues } from './contexts/IssueContext'
 import { KanbanProvider } from './contexts/KanbanContext'
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext'
+import { SkillsProvider } from './contexts/SkillsContext'
+import { ToastProvider } from './components/Toast/Toast'
 import ActivityBar, { ViewType } from './components/ActivityBar/ActivityBar'
 import Sidebar from './components/Sidebar/Sidebar'
 import Splitter from './components/Splitter/Splitter'
@@ -16,6 +18,7 @@ import NotificationBanner from './components/NotificationBanner/NotificationBann
 import { CommandPalette, Command } from './components/CommandPalette/CommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useWorkspace } from './hooks/useWorkspace'
+import i18n from './i18n'
 
 // Lazy-load heavy components to defer their JS parsing/evaluation
 const MainArea = lazy(() => import('./components/MainArea/MainArea'))
@@ -36,6 +39,17 @@ function AppInner(): React.JSX.Element {
   const [terminalVisible, setTerminalVisible] = useState(true)
 
   const { currentWorkspace, recentWorkspaces, openWorkspace, openWorkspacePath } = useWorkspace()
+
+  // Apply saved language on startup
+  useEffect(() => {
+    window.settings.get().then((raw) => {
+      const s = raw as Record<string, unknown> | null
+      const general = s?.general as Record<string, unknown> | undefined
+      if (general?.language && typeof general.language === 'string') {
+        i18n.changeLanguage(general.language)
+      }
+    })
+  }, [])
   const { toggleTheme } = useTheme()
   const { createTerminal, splitPanel, focusedPanelId } = useTerminals()
   const { activeTab, closeTab, tabs, setActiveTab, saveFile } = useEditor()
@@ -233,7 +247,7 @@ function AppInner(): React.JSX.Element {
         {showSidebar && (
           <>
             <Sidebar
-              activeView={activeView as 'explorer' | 'search' | 'settings'}
+              activeView={activeView as 'explorer' | 'search' | 'settings' | 'skills'}
               width={sidebarWidth}
               isVisible={true}
               currentWorkspace={currentWorkspace}
@@ -410,20 +424,31 @@ function AppProviderMount(): React.JSX.Element {
   return <AppInner />
 }
 
+function AppWithSkills(): React.JSX.Element {
+  const { currentWorkspace } = useWorkspace()
+  return (
+    <SkillsProvider workspacePath={currentWorkspace?.path ?? null}>
+      <AppProviderMount />
+    </SkillsProvider>
+  )
+}
+
 function App(): React.JSX.Element {
   return (
     <ThemeProvider>
-      <TerminalProvider>
-        <NotificationProvider>
-          <EditorProvider>
-            <IssueProvider>
-              <KanbanProvider>
-                <AppProviderMount />
-              </KanbanProvider>
-            </IssueProvider>
-          </EditorProvider>
-        </NotificationProvider>
-      </TerminalProvider>
+      <ToastProvider>
+        <TerminalProvider>
+          <NotificationProvider>
+            <EditorProvider>
+              <IssueProvider>
+                <KanbanProvider>
+                  <AppWithSkills />
+                </KanbanProvider>
+              </IssueProvider>
+            </EditorProvider>
+          </NotificationProvider>
+        </TerminalProvider>
+      </ToastProvider>
     </ThemeProvider>
   )
 }

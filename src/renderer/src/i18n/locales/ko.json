@@ -1,10 +1,24 @@
 {
   "app": { "title": "Workspace Manager" },
   "sidebar": { "terminals": "터미널", "issues": "이슈", "documents": "문서" },
-  "activityBar": { "explorer": "탐색기", "kanban": "칸반 보드", "search": "검색", "settings": "설정" },
+  "activityBar": { "explorer": "탐색기", "kanban": "칸반 보드", "search": "검색", "settings": "설정", "skills": "스킬" },
   "common": { "close": "닫기", "delete": "삭제", "rename": "이름 변경", "create": "새로 만들기", "save": "저장", "cancel": "취소" },
   "terminal": { "newTerminal": "새 터미널", "split": "분할", "tiling": "타일링 모드", "tabMode": "탭 모드" },
   "workspace": { "open": "폴더 열기", "recent": "최근 워크스페이스", "switch": "워크스페이스 전환" },
   "kanban": { "open": "열림", "inProgress": "진행 중", "resolved": "완료", "newIssue": "새 이슈" },
-  "settings": { "general": "일반", "appearance": "외관", "terminal": "터미널", "editor": "에디터", "workspace": "워크스페이스" }
+  "settings": { "general": "일반", "appearance": "외관", "terminal": "터미널", "editor": "에디터", "workspace": "워크스페이스" },
+  "skills": {
+    "title": "스킬",
+    "search": "스킬 검색...",
+    "install": "설치",
+    "uninstall": "제거",
+    "installed": "설치됨",
+    "updateAvailable": "업데이트 가능",
+    "loading": "스킬 로딩 중...",
+    "error": "스킬 로드 실패",
+    "retry": "재시도",
+    "noSkills": "스킬 없음",
+    "refresh": "레지스트리 새로고침",
+    "welcomeInfo": "워크스페이스를 열어 코딩 에이전트 스킬을 탐색하고 설치하세요"
+  }
 }
