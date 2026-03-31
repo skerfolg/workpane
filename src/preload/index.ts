@@ -135,7 +135,14 @@ const skillsAPI = {
   getAvailable: () => ipcRenderer.invoke('skills:get-available'),
   getInstalled: (projectPath: string) => ipcRenderer.invoke('skills:get-installed', projectPath),
   install: (skillName: string, projectPath: string) => ipcRenderer.invoke('skills:install', skillName, projectPath),
-  uninstall: (skillName: string, projectPath: string) => ipcRenderer.invoke('skills:uninstall', skillName, projectPath)
+  uninstall: (skillName: string, projectPath: string) => ipcRenderer.invoke('skills:uninstall', skillName, projectPath),
+  getUnified: () => ipcRenderer.invoke('skills:get-unified'),
+  getInstalledRecords: (projectPath: string) => ipcRenderer.invoke('skills:get-installed-records', projectPath),
+  installRegistry: (skillId: string, agentId: string, projectPath: string) =>
+    ipcRenderer.invoke('skills:install-registry', skillId, agentId, projectPath),
+  uninstallRegistry: (skillId: string, agentId: string, projectPath: string) =>
+    ipcRenderer.invoke('skills:uninstall-registry', skillId, agentId, projectPath),
+  refreshRegistry: () => ipcRenderer.invoke('skills:refresh-registry')
 }
 
 const recoveryAPI = {

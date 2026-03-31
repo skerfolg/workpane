@@ -1,10 +1,10 @@
 import React from 'react'
-import { FolderTree, Columns3, Search, Settings } from 'lucide-react'
+import { FolderTree, Columns3, Search, Settings, Puzzle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useKanban } from '../../contexts/KanbanContext'
 import './ActivityBar.css'
 
-export type ViewType = 'explorer' | 'kanban' | 'search' | 'settings'
+export type ViewType = 'explorer' | 'kanban' | 'search' | 'settings' | 'skills'
 
 interface ActivityBarProps {
   activeView: ViewType
@@ -27,6 +27,7 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeView, onViewChange }) =
     { id: 'explorer', icon: <FolderTree size={18} />, labelKey: 'activityBar.explorer' },
     { id: 'kanban', icon: <Columns3 size={18} />, labelKey: 'activityBar.kanban' },
     { id: 'search', icon: <Search size={18} />, labelKey: 'activityBar.search' },
+    { id: 'skills', icon: <Puzzle size={18} />, labelKey: 'activityBar.skills' },
     { id: 'settings', icon: <Settings size={18} />, labelKey: 'activityBar.settings' }
   ]
 

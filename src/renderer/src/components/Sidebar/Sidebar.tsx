@@ -6,6 +6,7 @@ import { KanbanIssueDocTree } from './KanbanIssueDocTree'
 import WorkspaceSwitcher from './WorkspaceSwitcher'
 import SearchView from '../Search/SearchView'
 import SettingsView from '../Settings/SettingsView'
+import SkillsView from '../Skills/SkillsView'
 
 interface WorkspaceInfo {
   path: string
@@ -13,7 +14,7 @@ interface WorkspaceInfo {
 }
 
 interface SidebarProps {
-  activeView: 'explorer' | 'search' | 'settings'
+  activeView: 'explorer' | 'search' | 'settings' | 'skills'
   width: number
   isVisible: boolean
   currentWorkspace: WorkspaceInfo | null
@@ -92,6 +93,8 @@ function Sidebar({
           <SearchView />
         ) : activeView === 'settings' ? (
           <SettingsView />
+        ) : activeView === 'skills' ? (
+          <SkillsView />
         ) : null}
       </div>
     </div>

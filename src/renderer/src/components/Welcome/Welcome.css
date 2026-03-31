@@ -111,3 +111,24 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.welcome__skills-info {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-8);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  width: 100%;
+  max-width: 520px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-family: var(--font-sans);
+}
+
+.welcome__skills-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}

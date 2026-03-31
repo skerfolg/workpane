@@ -412,6 +412,26 @@ ipcMain.handle('skills:uninstall', (_event, skillName: string, projectPath: stri
   skillsManager.uninstallSkill(skillName, projectPath)
 })
 
+ipcMain.handle('skills:get-unified', () => {
+  return skillsManager.getUnifiedSkills()
+})
+
+ipcMain.handle('skills:get-installed-records', (_event, projectPath: string) => {
+  return skillsManager.getInstalledRecords(projectPath)
+})
+
+ipcMain.handle('skills:install-registry', (_event, skillId: string, agentId: string, projectPath: string) => {
+  return skillsManager.installRegistrySkill(skillId, agentId, projectPath)
+})
+
+ipcMain.handle('skills:uninstall-registry', (_event, skillId: string, agentId: string, projectPath: string) => {
+  return skillsManager.uninstallRegistrySkill(skillId, agentId, projectPath)
+})
+
+ipcMain.handle('skills:refresh-registry', () => {
+  return skillsManager.fetchRegistry()
+})
+
 // IPC handlers for crash recovery
 ipcMain.handle('recovery:check', (_event, workspacePath: string) => {
   return crashRecovery.checkRecovery(workspacePath)

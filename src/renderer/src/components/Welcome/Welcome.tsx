@@ -1,4 +1,5 @@
 import React from 'react'
+import { Puzzle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import './Welcome.css'
 
@@ -44,6 +45,11 @@ function Welcome({ recentWorkspaces, onOpen, onOpenPath }: WelcomeProps): React.
             ))
           )}
         </div>
+      </div>
+
+      <div className="welcome__skills-info">
+        <Puzzle size={16} className="welcome__skills-icon" />
+        <span>{t('skills.welcomeInfo')}</span>
       </div>
     </div>
   )

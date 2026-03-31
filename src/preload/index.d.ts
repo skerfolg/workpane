@@ -1,4 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
+import type { UnifiedSkill, InstalledSkillRecord } from '../shared/types'
 
 export interface ApprovalDetectedEvent {
   terminalId: string
@@ -187,6 +188,18 @@ export interface BrowserAPI {
   onConsoleMessage: (callback: (id: string, level: string, message: string) => void) => () => void
 }
 
+export interface SkillsAPI {
+  getAvailable: () => Promise<import('../shared/types').SkillInfo[]>
+  getInstalled: (projectPath: string) => Promise<import('../shared/types').SkillInfo[]>
+  install: (skillName: string, projectPath: string) => Promise<void>
+  uninstall: (skillName: string, projectPath: string) => Promise<void>
+  getUnified: () => Promise<UnifiedSkill[]>
+  getInstalledRecords: (projectPath: string) => Promise<InstalledSkillRecord[]>
+  installRegistry: (skillId: string, agentId: string, projectPath: string) => Promise<void>
+  uninstallRegistry: (skillId: string, agentId: string, projectPath: string) => Promise<void>
+  refreshRegistry: () => Promise<import('../shared/types').SkillRegistry>
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -201,6 +214,7 @@ declare global {
     theme: ThemeAPI
     kanban: KanbanAPI
     browser: BrowserAPI
+    skills: SkillsAPI
     api: unknown
   }
 }
