@@ -211,8 +211,21 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
     const normalizedDir = dirPath.replace(/\\/g, '/')
     const normalizedRoot = workspacePath.replace(/\\/g, '/')
 
+    // Merge new nodes with existing ones, preserving expanded children
+    const mergeChildren = (incoming: TreeNode[], existing: TreeNode[]): TreeNode[] => {
+      return incoming.map((newNode) => {
+        const existingNode = existing.find(
+          (e) => e.entry.path.replace(/\\/g, '/') === newNode.entry.path.replace(/\\/g, '/')
+        )
+        if (existingNode?.children !== null) {
+          return { ...newNode, children: existingNode!.children }
+        }
+        return newNode
+      })
+    }
+
     if (normalizedDir === normalizedRoot) {
-      setRootNodes(newChildren)
+      setRootNodes((prev) => mergeChildren(newChildren, prev))
       return
     }
 
@@ -220,7 +233,7 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
     const updateNodes = (nodes: TreeNode[]): TreeNode[] => {
       return nodes.map((node) => {
         if (node.entry.path.replace(/\\/g, '/') === normalizedDir) {
-          return { ...node, children: newChildren, loading: false }
+          return { ...node, children: mergeChildren(newChildren, node.children ?? []), loading: false }
         }
         if (node.children) {
           return { ...node, children: updateNodes(node.children) }
@@ -235,6 +248,9 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
   // Watcher integration (secondary refresh)
   useEffect(() => {
     const unsubscribe = window.watcher.onChanged((data) => {
+      // 'change' means file content changed — directory listing is unaffected, skip refresh
+      if (data.type === 'change') return
+
       const changedPath = data.path.replace(/\\/g, '/')
       // Find parent directory
       const lastSlash = changedPath.lastIndexOf('/')
