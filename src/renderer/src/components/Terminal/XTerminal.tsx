@@ -191,6 +191,7 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
       // Ctrl+C or Ctrl+Shift+C — copy if selection exists, otherwise send SIGINT
       if (ctrl && (e.key === 'c' || e.key === 'C')) {
         if (term.hasSelection()) {
+          e.preventDefault()
           handleCopy()
           return false
         }
@@ -200,6 +201,7 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
 
       // Ctrl+V or Ctrl+Shift+V — paste from clipboard
       if (ctrl && (e.key === 'v' || e.key === 'V')) {
+        e.preventDefault()
         handlePaste()
         return false
       }

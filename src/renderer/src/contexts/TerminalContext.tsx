@@ -772,6 +772,19 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
   // Track the currently active workspace path
   const currentWorkspaceRef = useRef<string | null>(null)
 
+  /** Compute the next terminal display number based on currently open terminal names. */
+  const getNextTerminalNumber = useCallback((): number => {
+    const current = stateRef.current
+    const usedNumbers = new Set<number>()
+    for (const t of current.terminals) {
+      const match = t.name.match(/^Terminal (\d+)$/)
+      if (match) usedNumbers.add(parseInt(match[1], 10))
+    }
+    let n = 1
+    while (usedNumbers.has(n)) n++
+    return n
+  }, [])
+
   const generateId = useCallback((): string => {
     counterRef.current += 1
     return `terminal-${counterRef.current}`
@@ -1033,7 +1046,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
 
   const createTerminal = useCallback(async (): Promise<void> => {
     const id = generateId()
-    const name = `Terminal ${counterRef.current}`
+    const name = `Terminal ${getNextTerminalNumber()}`
     let cwd: string | undefined
     try {
       const wsApi = (window as any).workspace
@@ -1049,7 +1062,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
 
     const activeGroup = getActiveGroup(stateRef.current)
     dispatch({ type: 'CREATE_TERMINAL', id, name, panelId: activeGroup.focusedPanelId })
-  }, [generateId])
+  }, [generateId, getNextTerminalNumber])
 
   const removeTerminal = useCallback((id: string): void => {
     const api = (window as any).terminal
@@ -1094,7 +1107,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
   const splitPanel = useCallback(
     async (panelId: string, direction: SplitDirection): Promise<void> => {
       const id = generateId()
-      const name = `Terminal ${counterRef.current}`
+      const name = `Terminal ${getNextTerminalNumber()}`
       let cwd: string | undefined
       try {
         const wsApi = (window as any).workspace
@@ -1109,7 +1122,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
       if (termApi) termApi.create(id, undefined, cwd)
       dispatch({ type: 'SPLIT_PANEL', panelId, direction, newTerminalId: id, newTerminalName: name })
     },
-    [generateId]
+    [generateId, getNextTerminalNumber]
   )
 
   const splitPanelEmpty = useCallback(
@@ -1191,7 +1204,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
   const createGroup = useCallback(async (): Promise<void> => {
     const groupId = generateGroupId()
     const terminalId = generateId()
-    const terminalName = `Terminal ${counterRef.current}`
+    const terminalName = `Terminal ${getNextTerminalNumber()}`
     const groupName = `Group ${groupCounterRef.current}`
 
     let cwd: string | undefined
@@ -1208,7 +1221,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     if (termApi) termApi.create(terminalId, undefined, cwd)
 
     dispatch({ type: 'CREATE_GROUP', groupId, name: groupName, terminalId, terminalName })
-  }, [generateGroupId, generateId])
+  }, [generateGroupId, generateId, getNextTerminalNumber])
 
   const deleteGroup = useCallback(async (groupId: string): Promise<void> => {
     const current = stateRef.current
