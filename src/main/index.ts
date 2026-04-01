@@ -76,11 +76,58 @@ function createWindow(): void {
   })
   console.log(`[PERF][Main] createWindow: BrowserWindow constructed ${(performance.now() - _perfStart).toFixed(1)}ms`)
 
+  // Timeout: force-show window if ready-to-show never fires
+  const readyTimeout = setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      console.error(`[DEBUG][Main] ready-to-show timeout (10s) — force-showing window`)
+      mainWindow.show()
+    }
+  }, 10_000)
+
   mainWindow.on('ready-to-show', () => {
+    clearTimeout(readyTimeout)
     console.log(`[PERF][Main] createWindow: ready-to-show ${(performance.now() - _perfStart).toFixed(1)}ms`)
     mainWindow!.show()
     watcherManager.setWindow(mainWindow!)
     initAutoUpdater(mainWindow!)
+  })
+
+  // --- Renderer process crash/unresponsive diagnostics ---
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[DEBUG][Main] render-process-gone — reason: ${details.reason}, exitCode: ${details.exitCode}`)
+    // Attempt automatic recovery by reloading the renderer
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log(`[DEBUG][Main] Attempting renderer reload after crash...`)
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.reload()
+        }
+      }, 1000)
+    }
+  })
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error(`[DEBUG][Main] webContents became unresponsive at ${new Date().toISOString()}`)
+  })
+
+  mainWindow.webContents.on('responsive', () => {
+    console.log(`[DEBUG][Main] webContents became responsive again at ${new Date().toISOString()}`)
+  })
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[DEBUG][Main] did-fail-load — code: ${errorCode}, desc: ${errorDescription}, url: ${validatedURL}`)
+  })
+
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    console.error(`[DEBUG][Main] preload-error — path: ${preloadPath}, error:`, error)
+  })
+
+  mainWindow.on('close', () => {
+    console.log(`[DEBUG][Main] mainWindow close event at ${new Date().toISOString()}`)
+  })
+
+  mainWindow.on('closed', () => {
+    console.log(`[DEBUG][Main] mainWindow closed event at ${new Date().toISOString()}`)
   })
 
   // Notify renderer when maximize state changes (for titlebar icon)
@@ -593,7 +640,17 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  console.log(`[DEBUG][Main] before-quit at ${new Date().toISOString()}`)
   terminalManager.dispose()
   watcherManager.stop()
   apiServer.stop()
+})
+
+// --- Global error handlers for main process diagnostics ---
+process.on('uncaughtException', (error) => {
+  console.error(`[DEBUG][Main] uncaughtException:`, error)
+})
+
+process.on('unhandledRejection', (reason) => {
+  console.error(`[DEBUG][Main] unhandledRejection:`, reason)
 })
