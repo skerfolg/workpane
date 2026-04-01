@@ -101,7 +101,9 @@
       "category": "Development"
     },
     "publish": {
-      "provider": "github"
+      "provider": "github",
+      "owner": "skerfolg",
+      "repo": "workpane"
     }
   },
   "devDependencies": {
