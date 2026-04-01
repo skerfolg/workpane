@@ -365,34 +365,42 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
   }, [id])
 
   // Re-fit and refresh when becoming active (fixes WebGL canvas after tab switch / HMR)
-  // Two-tier approach: Tier 1 uses clearTextureAtlas (lightweight ~1ms),
-  // Tier 2 (dispose/reload) is a documented fallback if Tier 1 proves insufficient.
+  // Double-rAF ensures browser has completed layout recalculation after display:none → block
+  // before measuring container dimensions for fitAddon.fit().
   useEffect(() => {
     if (!isActive || !fitAddonRef.current || !terminalRef.current) return
 
     const term = terminalRef.current
     const fitAddon = fitAddonRef.current
 
+    // First rAF: browser schedules style/layout recalc after display change
+    // Second rAF: layout is now stable, safe to measure and fit
+    let innerRafId: number
     const rafId = requestAnimationFrame(() => {
-      try {
-        fitAddon.fit()
-      } catch { /* ignore */ }
-
-      // Tier 1: Clear texture atlas to force glyph re-render without destroying GL context
-      if (webglAddonRef.current) {
+      innerRafId = requestAnimationFrame(() => {
         try {
-          (webglAddonRef.current as any).clearTextureAtlas()
-        } catch { /* ignore — API may not be available */ }
-      }
+          fitAddon.fit()
+        } catch { /* ignore */ }
 
-      term.refresh(0, term.rows - 1)
+        // Clear texture atlas to force glyph re-render without destroying GL context
+        if (webglAddonRef.current) {
+          try {
+            (webglAddonRef.current as any).clearTextureAtlas()
+          } catch { /* ignore — API may not be available */ }
+        }
 
-      // Sync PTY dimensions after fit
-      const api = (window as any).terminal
-      if (api) api.resize(id, term.cols, term.rows)
+        term.refresh(0, term.rows - 1)
+
+        // Sync PTY dimensions after fit
+        const api = (window as any).terminal
+        if (api) api.resize(id, term.cols, term.rows)
+      })
     })
 
-    return () => cancelAnimationFrame(rafId)
+    return () => {
+      cancelAnimationFrame(rafId)
+      cancelAnimationFrame(innerRafId)
+    }
   }, [isActive, id])
 
   // Right-click context menu
