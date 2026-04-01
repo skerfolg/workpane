@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { SettingsManager } from './settings-manager'
@@ -73,7 +73,18 @@ export class WorkspaceManager {
     }
 
     const statePath = join(workspaceDir, 'state.json')
-    await writeFile(statePath, JSON.stringify(state, null, 2), 'utf-8')
+    // Shallow-merge incoming keys into existing state so that different
+    // contexts (terminal, editor, etc.) can save independently without
+    // overwriting each other's data.
+    let merged: WorkspaceState = { ...state }
+    try {
+      const raw = await readFile(statePath, 'utf-8')
+      const existing = JSON.parse(raw) as WorkspaceState
+      merged = { ...existing, ...state }
+    } catch {
+      // file doesn't exist yet or is corrupt — use state as-is
+    }
+    await writeFile(statePath, JSON.stringify(merged, null, 2), 'utf-8')
     console.log(`[PERF][Main] saveWorkspaceState done ${(performance.now() - _t).toFixed(1)}ms`)
   }
 
@@ -87,7 +98,15 @@ export class WorkspaceManager {
     }
 
     const statePath = join(workspaceDir, 'state.json')
-    writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf-8')
+    let merged: WorkspaceState = { ...state }
+    try {
+      const raw = readFileSync(statePath, 'utf-8')
+      const existing = JSON.parse(raw) as WorkspaceState
+      merged = { ...existing, ...state }
+    } catch {
+      // file doesn't exist yet or is corrupt — use state as-is
+    }
+    writeFileSync(statePath, JSON.stringify(merged, null, 2), 'utf-8')
   }
 
   listWorkspaces(): string[] {

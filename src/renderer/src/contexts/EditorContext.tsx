@@ -12,6 +12,11 @@ export interface EditorTab {
   isConflicted?: boolean
 }
 
+interface SavedEditorState {
+  editorTabs: Array<{ filePath: string; title: string }>
+  activeEditorFilePath: string | null
+}
+
 interface EditorContextValue {
   tabs: EditorTab[]
   activeTab: EditorTab | null
@@ -32,6 +37,10 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
   const [tabs, setTabs] = useState<EditorTab[]>([])
   const tabsRef = useRef<EditorTab[]>(tabs)
   const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Workspace-scoped editor state cache: maps workspace path → saved tab list
+  const workspaceStatesRef = useRef<Map<string, SavedEditorState>>(new Map())
+  const currentWorkspaceRef = useRef<string | null>(null)
 
   // Keep ref in sync with state so interval callbacks see current tabs
   useEffect(() => {
@@ -85,9 +94,7 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
       )
       if (!matchingTab) return
 
-      // Check mtime to confirm external change
       try {
-        // We can't get mtime directly via fs API, so we mark conflict on any watcher change for dirty tab
         setTabs((prev) =>
           prev.map((t) =>
             t.id === matchingTab.id ? { ...t, isConflicted: true } : t
@@ -102,6 +109,164 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
   const STREAM_THRESHOLD = 1024 * 1024 // 1MB
+
+  // Serialize current tabs for persistence
+  const serializeEditorState = useCallback((): SavedEditorState => {
+    const currentTabs = tabsRef.current
+    const active = currentTabs.find((t) => t.isActive)
+    return {
+      editorTabs: currentTabs.map((t) => ({ filePath: t.filePath, title: t.title })),
+      activeEditorFilePath: active?.filePath ?? null
+    }
+  }, [])
+
+  // Restore editor tabs from saved state
+  const restoreEditorState = useCallback(async (saved: SavedEditorState): Promise<void> => {
+    // Close all current tabs (dispose models and content)
+    for (const tab of tabsRef.current) {
+      disposeModel(tab.filePath)
+      removeContent(tab.filePath)
+    }
+
+    if (!saved.editorTabs || saved.editorTabs.length === 0) {
+      setTabs([])
+      return
+    }
+
+    const restoredTabs: EditorTab[] = []
+    for (const savedTab of saved.editorTabs) {
+      try {
+        const stat = await window.fs.stat(savedTab.filePath)
+        if (stat.size > MAX_FILE_SIZE) continue
+
+        let fileContent: string
+        if (stat.size > STREAM_THRESHOLD) {
+          fileContent = await window.fs.readFileStream(savedTab.filePath)
+        } else {
+          fileContent = await window.fs.readFile(savedTab.filePath)
+        }
+
+        const id = `tab-${++tabIdCounter}`
+        setContent(savedTab.filePath, fileContent)
+        restoredTabs.push({
+          id,
+          filePath: savedTab.filePath,
+          title: savedTab.title,
+          isActive: savedTab.filePath === saved.activeEditorFilePath,
+          isDirty: false,
+          isConflicted: false
+        })
+      } catch {
+        // File no longer exists or is unreadable — skip
+      }
+    }
+
+    // Ensure exactly one tab is active
+    if (restoredTabs.length > 0 && !restoredTabs.some((t) => t.isActive)) {
+      restoredTabs[0].isActive = true
+    }
+
+    setTabs(restoredTabs)
+  }, [])
+
+  // Initialize editor tabs when workspace changes
+  const initEditorTabs = useCallback(
+    async (workspaceCwd: string): Promise<void> => {
+      // Same workspace — no-op
+      if (currentWorkspaceRef.current === workspaceCwd) return
+
+      // Save current workspace state before switching (if not first load)
+      if (currentWorkspaceRef.current !== null) {
+        workspaceStatesRef.current.set(currentWorkspaceRef.current, serializeEditorState())
+      }
+
+      currentWorkspaceRef.current = workspaceCwd
+
+      // Fast path: restore from in-memory cache (no IPC)
+      if (workspaceStatesRef.current.has(workspaceCwd)) {
+        const cached = workspaceStatesRef.current.get(workspaceCwd)!
+        await restoreEditorState(cached)
+        return
+      }
+
+      // Slow path: load from disk via IPC
+      const wsApi = (window as any).workspace
+      if (wsApi) {
+        try {
+          const savedState = await wsApi.getState()
+          if (savedState?.editorTabs && Array.isArray(savedState.editorTabs)) {
+            await restoreEditorState(savedState as SavedEditorState)
+            return
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // No saved state — start with empty editor
+      for (const tab of tabsRef.current) {
+        disposeModel(tab.filePath)
+        removeContent(tab.filePath)
+      }
+      setTabs([])
+    },
+    [serializeEditorState, restoreEditorState]
+  )
+
+  // Listen for workspace changes
+  useEffect(() => {
+    const wsApi = (window as any).workspace
+    if (!wsApi) return
+
+    wsApi
+      .getCurrent()
+      .then((current: { path: string; name: string } | null) => {
+        if (current?.path) initEditorTabs(current.path)
+      })
+      .catch(() => { /* ignore */ })
+
+    const unsub = wsApi.onChanged((info: { path: string; name: string } | null) => {
+      if (info?.path) initEditorTabs(info.path)
+    })
+
+    return () => {
+      if (unsub) unsub()
+    }
+  }, [initEditorTabs])
+
+  // Save editor state on tab changes (debounced)
+  const editorSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    const api = (window as any).workspace
+    if (!api || !currentWorkspaceRef.current) return
+    if (editorSaveTimeoutRef.current) clearTimeout(editorSaveTimeoutRef.current)
+    editorSaveTimeoutRef.current = setTimeout(() => {
+      try {
+        api.saveState(serializeEditorState())
+      } catch {
+        // ignore save errors
+      }
+    }, 500)
+    return () => {
+      if (editorSaveTimeoutRef.current) clearTimeout(editorSaveTimeoutRef.current)
+    }
+  }, [tabs, serializeEditorState])
+
+  // Save editor state on beforeunload
+  useEffect(() => {
+    const handleUnload = (): void => {
+      const api = (window as any).workspace
+      if (api && currentWorkspaceRef.current) {
+        try {
+          api.saveState(serializeEditorState())
+        } catch {
+          // ignore
+        }
+      }
+    }
+    window.addEventListener('beforeunload', handleUnload)
+    return () => window.removeEventListener('beforeunload', handleUnload)
+  }, [tabs, serializeEditorState])
 
   const openFile = useCallback(async (filePath: string) => {
     setTabs((prev) => {
