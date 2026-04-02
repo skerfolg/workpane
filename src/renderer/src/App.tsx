@@ -29,6 +29,10 @@ const SIDEBAR_MAX_WIDTH = 500
 
 // Inner app that has access to all contexts
 function AppInner(): React.JSX.Element {
+  const _s = (window as any).__rendererStart ?? performance.now()
+  useEffect(() => {
+    console.log(`[TIMELINE] ${(performance.now() - _s).toFixed(0)}ms — AppInner mounted (UI tree ready)`)
+  }, [])
   const [activeView, setActiveView] = useState<ViewType>('explorer')
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH)
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -434,6 +438,16 @@ function AppWithSkills(): React.JSX.Element {
 }
 
 function App(): React.JSX.Element {
+  const _s = (window as any).__rendererStart ?? performance.now()
+  useEffect(() => {
+    console.log(`[TIMELINE] ${(performance.now() - _s).toFixed(0)}ms — App mounted (all providers ready)`)
+    requestAnimationFrame(() => {
+      console.log(`[TIMELINE] ${(performance.now() - _s).toFixed(0)}ms — App first paint after mount`)
+      requestIdleCallback(() => {
+        console.log(`[TIMELINE] ${(performance.now() - _s).toFixed(0)}ms — App idle (fully interactive)`)
+      })
+    })
+  }, [])
   return (
     <ThemeProvider>
       <ToastProvider>

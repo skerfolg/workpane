@@ -973,10 +973,17 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     const wsApi = (window as any).workspace
     if (!wsApi) return
 
+    const _s = (window as any).__rendererStart ?? performance.now()
+    console.log(`[TIMELINE] ${(performance.now() - _s).toFixed(0)}ms — TerminalContext: init start`)
     wsApi
       .getCurrent()
       .then((current: { path: string; name: string } | null) => {
-        if (current?.path) initTerminals(current.path)
+        if (current?.path) {
+          console.log(`[TIMELINE] ${(performance.now() - _s).toFixed(0)}ms — TerminalContext: initTerminals start`)
+          initTerminals(current.path).then(() => {
+            console.log(`[TIMELINE] ${(performance.now() - _s).toFixed(0)}ms — TerminalContext: initTerminals done`)
+          })
+        }
       })
       .catch(() => {
         /* ignore */
