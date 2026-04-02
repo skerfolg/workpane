@@ -234,11 +234,19 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
     }
   }, [initEditorTabs])
 
+  // Suppress saves during startup — restored state shouldn't trigger immediate re-save
+  const editorInitDoneRef = useRef(false)
+  useEffect(() => {
+    const timer = setTimeout(() => { editorInitDoneRef.current = true }, 2000)
+    return () => clearTimeout(timer)
+  }, [])
+
   // Save editor state on tab changes (debounced)
   const editorSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     const api = (window as any).workspace
     if (!api || !currentWorkspaceRef.current) return
+    if (!editorInitDoneRef.current) return  // Skip saves during startup
     if (editorSaveTimeoutRef.current) clearTimeout(editorSaveTimeoutRef.current)
     editorSaveTimeoutRef.current = setTimeout(() => {
       try {

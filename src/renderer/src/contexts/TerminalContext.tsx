@@ -991,16 +991,25 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     }
   }, [initTerminals])
 
+  // Suppress saves during startup — restored state shouldn't trigger immediate re-save
+  const initDoneRef = useRef(false)
+  useEffect(() => {
+    const timer = setTimeout(() => { initDoneRef.current = true }, 2000)
+    return () => clearTimeout(timer)
+  }, [])
+
   // Save state on relevant state changes (debounced to avoid write storms during init)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (state.terminals.length === 0) return
+    if (!initDoneRef.current) return  // Skip saves during startup
     const api = (window as any).workspace
     if (!api) return
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     saveTimeoutRef.current = setTimeout(() => {
       try {
-        api.saveState({
+        const _t = performance.now()
+        const payload = {
           version: 2,
           terminals: state.terminals,
           groups: state.groups.map((g) => ({
@@ -1008,7 +1017,9 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
             layoutTree: serializeLayout(g.layoutTree)
           })),
           activeGroupId: state.activeGroupId
-        })
+        }
+        console.log(`[PERF][Renderer] TerminalContext.saveState: serialize ${(performance.now() - _t).toFixed(1)}ms payload=${JSON.stringify(payload).length} bytes`)
+        api.saveState(payload)
       } catch {
         // ignore save errors
       }

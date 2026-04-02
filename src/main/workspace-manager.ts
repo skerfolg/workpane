@@ -84,7 +84,11 @@ export class WorkspaceManager {
     if (!this.currentWorkspace || !this.pendingSave) return
 
     // Wait for any in-flight write to finish first
-    if (this.saveInFlight) await this.saveInFlight
+    if (this.saveInFlight) {
+      const _waitStart = performance.now()
+      await this.saveInFlight
+      console.log(`[PERF][Main] saveWorkspaceState: waited for in-flight ${(performance.now() - _waitStart).toFixed(1)}ms`)
+    }
 
     const _t = performance.now()
     const stateToWrite = this.pendingSave
@@ -98,17 +102,25 @@ export class WorkspaceManager {
     const statePath = join(workspaceDir, 'state.json')
     let merged: WorkspaceState = { ...stateToWrite }
     try {
+      const _readStart = performance.now()
       const raw = await readFile(statePath, 'utf-8')
+      console.log(`[PERF][Main] saveWorkspaceState: read ${(raw.length / 1024).toFixed(1)}KB ${(performance.now() - _readStart).toFixed(1)}ms`)
       const existing = JSON.parse(raw) as WorkspaceState
       merged = { ...existing, ...stateToWrite }
     } catch {
       // file doesn't exist yet or is corrupt — use state as-is
     }
 
-    this.saveInFlight = writeFile(statePath, JSON.stringify(merged, null, 2), 'utf-8')
+    const _serStart = performance.now()
+    const json = JSON.stringify(merged)
+    console.log(`[PERF][Main] saveWorkspaceState: serialize ${(json.length / 1024).toFixed(1)}KB ${(performance.now() - _serStart).toFixed(1)}ms`)
+
+    const _writeStart = performance.now()
+    this.saveInFlight = writeFile(statePath, json, 'utf-8')
     await this.saveInFlight
     this.saveInFlight = null
-    console.log(`[PERF][Main] saveWorkspaceState done ${(performance.now() - _t).toFixed(1)}ms`)
+    console.log(`[PERF][Main] saveWorkspaceState: write ${(performance.now() - _writeStart).toFixed(1)}ms`)
+    console.log(`[PERF][Main] saveWorkspaceState done total=${(performance.now() - _t).toFixed(1)}ms`)
   }
 
   // Synchronous save for beforeunload — async not possible in unload handlers
