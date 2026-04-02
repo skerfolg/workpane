@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
+import { Worker } from 'worker_threads'
 import { SettingsManager } from './settings-manager'
 
 export interface WorkspaceInfo {
@@ -15,10 +16,13 @@ export interface WorkspaceState {
 export class WorkspaceManager {
   private currentWorkspace: WorkspaceInfo | null = null
   private settingsManager: SettingsManager
+  // In-memory cache of the full merged state — avoids disk reads on every save
+  private stateCache: WorkspaceState | null = null
+  private stateCacheLoaded = false
   // Write coalescing: merge rapid save calls into a single disk write
   private pendingSave: WorkspaceState | null = null
   private saveTimer: ReturnType<typeof setTimeout> | null = null
-  private saveInFlight: Promise<void> | null = null
+  private flushLock: Promise<void> | null = null
 
   constructor(settingsManager: SettingsManager) {
     this.settingsManager = settingsManager
@@ -40,6 +44,10 @@ export class WorkspaceManager {
     const name = dirPath.split(/[\\/]/).pop() || dirPath
     this.currentWorkspace = { path: dirPath, name }
 
+    // Reset state cache for new workspace
+    this.stateCache = null
+    this.stateCacheLoaded = false
+
     this.settingsManager.addRecentWorkspace(dirPath)
     console.log(`[PERF][Main] openWorkspace done ${(performance.now() - _t).toFixed(1)}ms`)
 
@@ -48,21 +56,36 @@ export class WorkspaceManager {
 
   closeWorkspace(): void {
     this.currentWorkspace = null
+    this.stateCache = null
+    this.stateCacheLoaded = false
   }
 
   async getWorkspaceState(): Promise<WorkspaceState | null> {
     const _t = performance.now()
     if (!this.currentWorkspace) return null
 
+    // Return cached state if available
+    if (this.stateCacheLoaded && this.stateCache) {
+      console.log(`[PERF][Main] getWorkspaceState done (cache) ${(performance.now() - _t).toFixed(1)}ms`)
+      return this.stateCache
+    }
+
     const statePath = join(this.currentWorkspace.path, '.workspace', 'state.json')
-    if (!existsSync(statePath)) return {}
+    if (!existsSync(statePath)) {
+      this.stateCache = {}
+      this.stateCacheLoaded = true
+      return {}
+    }
 
     try {
       const raw = await readFile(statePath, 'utf-8')
-      const result = JSON.parse(raw) as WorkspaceState
+      this.stateCache = JSON.parse(raw) as WorkspaceState
+      this.stateCacheLoaded = true
       console.log(`[PERF][Main] getWorkspaceState done ${(performance.now() - _t).toFixed(1)}ms`)
-      return result
+      return this.stateCache
     } catch {
+      this.stateCache = {}
+      this.stateCacheLoaded = true
       return {}
     }
   }
@@ -70,62 +93,87 @@ export class WorkspaceManager {
   async saveWorkspaceState(state: WorkspaceState): Promise<void> {
     if (!this.currentWorkspace) return
 
-    // Coalesce: merge incoming state into pending batch
-    this.pendingSave = { ...(this.pendingSave ?? {}), ...state }
+    // Update in-memory cache immediately — no disk read needed later
+    this.stateCache = { ...(this.stateCache ?? {}), ...state }
+    this.stateCacheLoaded = true
 
-    // Debounce: only write after 300ms of quiet
+    // Coalesce: merge incoming state into pending batch
+    this.pendingSave = { ...this.stateCache }
+
+    // Debounce: only write after 500ms of quiet
     if (this.saveTimer) clearTimeout(this.saveTimer)
     this.saveTimer = setTimeout(() => {
       this._flushSave()
-    }, 300)
+    }, 500)
   }
 
   private async _flushSave(): Promise<void> {
     if (!this.currentWorkspace || !this.pendingSave) return
 
-    // Wait for any in-flight write to finish first
-    if (this.saveInFlight) {
-      const _waitStart = performance.now()
-      await this.saveInFlight
-      console.log(`[PERF][Main] saveWorkspaceState: waited for in-flight ${(performance.now() - _waitStart).toFixed(1)}ms`)
+    // Mutex: serialize concurrent flush calls
+    if (this.flushLock) {
+      await this.flushLock
+      // After waiting, pendingSave may have been consumed — recheck
+      if (!this.pendingSave) return
     }
 
+    let resolve: () => void
+    this.flushLock = new Promise<void>(r => { resolve = r })
+
     const _t = performance.now()
-    const stateToWrite = this.pendingSave
+    const dataToWrite = this.pendingSave
     this.pendingSave = null
 
     const workspaceDir = join(this.currentWorkspace.path, '.workspace')
-    if (!existsSync(workspaceDir)) {
-      await mkdir(workspaceDir, { recursive: true })
-    }
-
     const statePath = join(workspaceDir, 'state.json')
-    let merged: WorkspaceState = { ...stateToWrite }
+
     try {
-      const _readStart = performance.now()
-      const raw = await readFile(statePath, 'utf-8')
-      console.log(`[PERF][Main] saveWorkspaceState: read ${(raw.length / 1024).toFixed(1)}KB ${(performance.now() - _readStart).toFixed(1)}ms`)
-      const existing = JSON.parse(raw) as WorkspaceState
-      merged = { ...existing, ...stateToWrite }
-    } catch {
-      // file doesn't exist yet or is corrupt — use state as-is
+      // Write in a worker thread to avoid event loop congestion
+      const json = JSON.stringify(dataToWrite)
+      await this._writeInWorker(statePath, json)
+      console.log(`[PERF][Main] saveWorkspaceState done ${(json.length / 1024).toFixed(1)}KB ${(performance.now() - _t).toFixed(1)}ms`)
+    } catch (err) {
+      console.error('[Main] saveWorkspaceState error:', err)
+      // Fallback: try direct write
+      try {
+        if (!existsSync(workspaceDir)) {
+          await mkdir(workspaceDir, { recursive: true })
+        }
+        await writeFile(statePath, JSON.stringify(dataToWrite), 'utf-8')
+      } catch {
+        // ignore — best effort
+      }
+    } finally {
+      this.flushLock = null
+      resolve!()
     }
+  }
 
-    const _serStart = performance.now()
-    const json = JSON.stringify(merged)
-    console.log(`[PERF][Main] saveWorkspaceState: serialize ${(json.length / 1024).toFixed(1)}KB ${(performance.now() - _serStart).toFixed(1)}ms`)
-
-    const _writeStart = performance.now()
-    this.saveInFlight = writeFile(statePath, json, 'utf-8')
-    await this.saveInFlight
-    this.saveInFlight = null
-    console.log(`[PERF][Main] saveWorkspaceState: write ${(performance.now() - _writeStart).toFixed(1)}ms`)
-    console.log(`[PERF][Main] saveWorkspaceState done total=${(performance.now() - _t).toFixed(1)}ms`)
+  private _writeInWorker(filePath: string, data: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(
+        `const { parentPort, workerData } = require('worker_threads');
+         const fs = require('fs');
+         const path = require('path');
+         const dir = path.dirname(workerData.filePath);
+         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+         fs.writeFileSync(workerData.filePath, workerData.data, 'utf-8');
+         parentPort.postMessage('done');`,
+        { eval: true, workerData: { filePath, data } }
+      )
+      worker.on('message', () => { resolve(); worker.terminate() })
+      worker.on('error', (err) => { reject(err); worker.terminate() })
+    })
   }
 
   // Synchronous save for beforeunload — async not possible in unload handlers
   saveWorkspaceStateSync(state: WorkspaceState): void {
     if (!this.currentWorkspace) return
+
+    // Use in-memory cache to avoid disk read
+    const merged = { ...(this.stateCache ?? {}), ...state }
+    this.stateCache = merged
+    this.stateCacheLoaded = true
 
     const workspaceDir = join(this.currentWorkspace.path, '.workspace')
     if (!existsSync(workspaceDir)) {
@@ -133,15 +181,7 @@ export class WorkspaceManager {
     }
 
     const statePath = join(workspaceDir, 'state.json')
-    let merged: WorkspaceState = { ...state }
-    try {
-      const raw = readFileSync(statePath, 'utf-8')
-      const existing = JSON.parse(raw) as WorkspaceState
-      merged = { ...existing, ...state }
-    } catch {
-      // file doesn't exist yet or is corrupt — use state as-is
-    }
-    writeFileSync(statePath, JSON.stringify(merged, null, 2), 'utf-8')
+    writeFileSync(statePath, JSON.stringify(merged), 'utf-8')
   }
 
   listWorkspaces(): string[] {
