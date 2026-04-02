@@ -456,7 +456,8 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
               style={{
                 position: 'absolute',
                 inset: 0,
-                display: isActive ? 'block' : 'none'
+                visibility: isActive ? 'visible' : 'hidden',
+                zIndex: isActive ? 1 : 0
               }}
             >
               <XTerminal id={terminal.id} isActive={isActive} onOpenFile={openFile} />
@@ -472,7 +473,8 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
               style={{
                 position: 'absolute',
                 inset: 0,
-                display: isActive ? 'block' : 'none',
+                visibility: isActive ? 'visible' : 'hidden',
+                zIndex: isActive ? 1 : 0,
                 height: '100%'
               }}
             >

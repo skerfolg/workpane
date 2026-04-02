@@ -7,6 +7,10 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          'workers/scan-worker': resolve('src/main/workers/scan-worker.ts')
+        },
         external: ['node-pty', 'electron-store', 'chokidar']
       }
     }

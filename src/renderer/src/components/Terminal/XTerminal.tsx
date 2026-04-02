@@ -319,16 +319,18 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
         directMode = true
       })
 
-      // Initial fit + resize after a delay for layout to settle
-      setTimeout(() => {
-        try {
-          fitAddon.fit()
-          const { cols, rows } = term
-          api.resize(id, cols, rows)
-        } catch (e) {
-          console.error('[XTerminal] fit failed:', e)
-        }
-      }, 300)
+      // Initial fit + resize: use rAF to wait for first layout pass
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try {
+            fitAddon.fit()
+            const { cols, rows } = term
+            api.resize(id, cols, rows)
+          } catch (e) {
+            console.error('[XTerminal] fit failed:', e)
+          }
+        })
+      })
     }
 
     // Cleanup: only dispose xterm.js view, do NOT kill PTY
@@ -343,63 +345,64 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
     }
   }, [id, handleCopy, handlePaste])
 
-  // Handle resize
+  // Handle resize — debounced via rAF to avoid layout thrashing
   useEffect(() => {
     if (!containerRef.current) return
 
+    let rafId: number | null = null
     const resizeObserver = new ResizeObserver(() => {
-      if (fitAddonRef.current && terminalRef.current) {
-        try {
-          fitAddonRef.current.fit()
-          const { cols, rows } = terminalRef.current
-          const api = (window as any).terminal
-          if (api) api.resize(id, cols, rows)
-        } catch (e) {
-          // ignore fit errors during rapid resize
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        if (fitAddonRef.current && terminalRef.current) {
+          try {
+            fitAddonRef.current.fit()
+            const { cols, rows } = terminalRef.current
+            const api = (window as any).terminal
+            if (api) api.resize(id, cols, rows)
+          } catch {
+            // ignore fit errors during rapid resize
+          }
         }
-      }
+      })
     })
 
     resizeObserver.observe(containerRef.current)
-    return () => resizeObserver.disconnect()
+    return () => {
+      resizeObserver.disconnect()
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
   }, [id])
 
   // Re-fit and refresh when becoming active (fixes WebGL canvas after tab switch / HMR)
-  // Double-rAF ensures browser has completed layout recalculation after display:none → block
-  // before measuring container dimensions for fitAddon.fit().
+  // With visibility:hidden strategy, layout dimensions are preserved so a single rAF suffices.
   useEffect(() => {
     if (!isActive || !fitAddonRef.current || !terminalRef.current) return
 
     const term = terminalRef.current
     const fitAddon = fitAddonRef.current
 
-    // First rAF: browser schedules style/layout recalc after display change
-    // Second rAF: layout is now stable, safe to measure and fit
-    let innerRafId: number
     const rafId = requestAnimationFrame(() => {
-      innerRafId = requestAnimationFrame(() => {
+      try {
+        fitAddon.fit()
+      } catch { /* ignore */ }
+
+      // Clear texture atlas to force glyph re-render without destroying GL context
+      if (webglAddonRef.current) {
         try {
-          fitAddon.fit()
-        } catch { /* ignore */ }
+          (webglAddonRef.current as any).clearTextureAtlas()
+        } catch { /* ignore — API may not be available */ }
+      }
 
-        // Clear texture atlas to force glyph re-render without destroying GL context
-        if (webglAddonRef.current) {
-          try {
-            (webglAddonRef.current as any).clearTextureAtlas()
-          } catch { /* ignore — API may not be available */ }
-        }
+      term.refresh(0, term.rows - 1)
 
-        term.refresh(0, term.rows - 1)
-
-        // Sync PTY dimensions after fit
-        const api = (window as any).terminal
-        if (api) api.resize(id, term.cols, term.rows)
-      })
+      // Sync PTY dimensions after fit
+      const api = (window as any).terminal
+      if (api) api.resize(id, term.cols, term.rows)
     })
 
     return () => {
       cancelAnimationFrame(rafId)
-      cancelAnimationFrame(innerRafId)
     }
   }, [isActive, id])
 

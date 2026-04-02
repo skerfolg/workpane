@@ -41,14 +41,15 @@ export class WatcherManager {
     this.watchRoot = dirPath
 
     // Build ignored patterns using RegExp for Windows backslash compatibility
-    // Dot-prefixed internal dirs (always ignored)
-    const alwaysIgnored = /[/\\]\.(git|workspace|omc|claude|vs)[/\\]/
+    // Ignore known tool-internal dot-dirs that generate high-volume file events.
+    // User-facing dot-dirs (.github, .vscode, .husky, etc.) are intentionally NOT ignored.
+    const dotDirIgnored = /[/\\]\.(git|workspace|omc|claude|vs|worktrees|nuget[^/\\]*)[/\\]/
     // User-configured excludes (node_modules, dist, obj, bin, etc.)
     const userExcludes = (excludePaths || []).filter(p => p !== '.git')
     const userIgnored = userExcludes.length > 0
       ? new RegExp(`[/\\\\](${userExcludes.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})[/\\\\]`)
       : null
-    const ignored: (string | RegExp)[] = [alwaysIgnored]
+    const ignored: (string | RegExp)[] = [dotDirIgnored]
     if (userIgnored) ignored.push(userIgnored)
 
     this.watcher = chokidar.watch(dirPath, {

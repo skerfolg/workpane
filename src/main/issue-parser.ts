@@ -223,56 +223,31 @@ const MAX_WALK_DEPTH = 10
 
 async function walkDirectory(rootPath: string, excludePaths: string[]): Promise<string[]> {
   const _t = performance.now()
-  console.log(`[PERF][Main] walkDirectory start root=${rootPath}`)
-  const excludeSet = new Set([...excludePaths, '.workspace'].map(p => p.toLowerCase()))
+  console.log(`[PERF][Main] walkDirectory start root=${rootPath} (worker thread)`)
 
-  async function walk(dir: string, depth: number): Promise<string[]> {
-    if (depth > MAX_WALK_DEPTH) return []
+  const { Worker } = await import('worker_threads')
+  const workerPath = join(__dirname, 'workers', 'scan-worker.js')
 
-    let dirents: import('fs').Dirent[]
-    try {
-      dirents = await fs.readdir(dir, { withFileTypes: true })
-    } catch {
-      // Skip unreadable directories
-      console.warn(`[scanner] Skipping unreadable directory: ${dir}`)
-      return []
-    }
+  return new Promise<string[]>((resolve, reject) => {
+    const worker = new Worker(workerPath, {
+      workerData: { rootPath, excludePaths }
+    })
 
-    // Filter excluded entries early
-    const validDirents = dirents.filter(d => !excludeSet.has(d.name.toLowerCase()))
-
-    // Separate dirs and .md files — no lstat needed thanks to withFileTypes
-    const subdirs: string[] = []
-    const mdFiles: string[] = []
-
-    for (const d of validDirents) {
-      if (d.isSymbolicLink()) continue
-      if (d.isDirectory()) {
-        subdirs.push(join(dir, d.name))
-      } else if (d.isFile() && d.name.endsWith('.md')) {
-        if (d.name !== 'INDEX.md' && d.name !== 'README.md') {
-          mdFiles.push(join(dir, d.name))
-        }
+    worker.on('message', (msg: { type: string; files?: string[]; message?: string }) => {
+      if (msg.type === 'result') {
+        console.log(`[PERF][Main] walkDirectory done files=${msg.files!.length} ${(performance.now() - _t).toFixed(1)}ms (worker thread)`)
+        resolve(msg.files!)
+      } else {
+        reject(new Error(msg.message ?? 'Worker scan failed'))
       }
-    }
+      worker.terminate()
+    })
 
-    // Recurse into subdirectories with concurrency limit
-    if (subdirs.length === 0) return mdFiles
-
-    const childResults = await parallelLimit(subdirs, IO_CONCURRENCY, (subdir) =>
-      walk(subdir, depth + 1)
-    )
-
-    const results = [...mdFiles]
-    for (const r of childResults) {
-      if (r.status === 'fulfilled') results.push(...r.value)
-    }
-    return results
-  }
-
-  const results = await walk(rootPath, 0)
-  console.log(`[PERF][Main] walkDirectory done files=${results.length} ${(performance.now() - _t).toFixed(1)}ms`)
-  return results
+    worker.on('error', (err) => {
+      console.error('[Main] walkDirectory worker error:', err)
+      reject(err)
+    })
+  })
 }
 
 function parseNonStandardDoc(filePath: string, content: string, projectRoot: string): DocEntry {

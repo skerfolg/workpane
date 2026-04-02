@@ -27,27 +27,37 @@ const workspaceManager = new WorkspaceManager(settingsManager)
 const watcherManager = new WatcherManager()
 
 // Invalidate caches when file changes are flushed to renderer
+// Use setImmediate to avoid blocking the main thread event loop during flush processing
 watcherManager.onFlush((rootDir, changes) => {
-  invalidateSearchCache(rootDir)
-  kanbanStore.invalidateCache(rootDir)
+  setImmediate(() => {
+    invalidateSearchCache(rootDir)
 
-  // Phase 3: Incremental update — process each file change
-  if (!mainWindow || mainWindow.isDestroyed()) return
-  const mdChanges = changes.filter(c =>
-    c.path.endsWith('.md') && (c.type === 'add' || c.type === 'change' || c.type === 'unlink')
-  )
-  if (mdChanges.length === 0) return
-
-  // Invalidate on-demand parse cache for changed files
-  for (const c of mdChanges) invalidateParsedCache(c.path)
-
-  Promise.all(
-    mdChanges.map(c => handleFileChange(c.type as 'add' | 'change' | 'unlink', c.path, rootDir))
-  ).then((results) => {
-    const updates = results.filter((r): r is IncrementalUpdate => r !== null)
-    if (updates.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('docs:incremental-update', updates)
+    // Only invalidate kanban cache when the kanban store file itself changed
+    const kanbanChanged = changes.some(c =>
+      c.path.replace(/\\/g, '/').endsWith('.workspace/kanban.json')
+    )
+    if (kanbanChanged) {
+      kanbanStore.invalidateCache(rootDir)
     }
+
+    // Phase 3: Incremental update — process each file change
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    const mdChanges = changes.filter(c =>
+      c.path.endsWith('.md') && (c.type === 'add' || c.type === 'change' || c.type === 'unlink')
+    )
+    if (mdChanges.length === 0) return
+
+    // Invalidate on-demand parse cache for changed files
+    for (const c of mdChanges) invalidateParsedCache(c.path)
+
+    Promise.all(
+      mdChanges.map(c => handleFileChange(c.type as 'add' | 'change' | 'unlink', c.path, rootDir))
+    ).then((results) => {
+      const updates = results.filter((r): r is IncrementalUpdate => r !== null)
+      if (updates.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('docs:incremental-update', updates)
+      }
+    })
   })
 })
 
