@@ -14,6 +14,7 @@ import Welcome from './components/Welcome/Welcome'
 import TitleBar from './components/TitleBar/TitleBar'
 import LoadingBar from './components/LoadingBar/LoadingBar'
 import StatusBar from './components/StatusBar/StatusBar'
+import UpdateNotification from './components/UpdateNotification/UpdateNotification'
 import NotificationBanner from './components/NotificationBanner/NotificationBanner'
 import { CommandPalette, Command } from './components/CommandPalette/CommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -274,6 +275,7 @@ function AppInner(): React.JSX.Element {
       </div>
 
       <StatusBar workspaceName={currentWorkspace?.name ?? null} />
+      <UpdateNotification />
 
       <NotificationBanner
         notifications={notifications}
