@@ -1,6 +1,6 @@
 {
   "name": "workpane",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "A prompt management application",
   "main": "./out/main/index.js",
   "author": "skerfolg <sk.erfolg@gmail.com>",
