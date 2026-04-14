@@ -1,0 +1,187 @@
+import { _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import path from 'path'
+
+const E2E_WORKSPACE_PATH =
+  process.env.E2E_WORKSPACE_PATH ??
+  path.join(process.cwd())
+
+function isClosedTargetError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    message.includes('Target page, context or browser has been closed') ||
+    message.includes('Browser has been closed') ||
+    message.includes('Application closed')
+  )
+}
+
+function waitForAppClose(app: ElectronApplication, timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      app.removeListener('close', handleClose)
+      reject(new Error(`Timed out waiting for Electron app to close after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    const handleClose = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+
+    app.once('close', handleClose)
+  })
+}
+
+export async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
+  const mainPath = path.join(__dirname, '../../../out/main/index.js')
+
+  const app = await electron.launch({
+    args: [mainPath],
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+    },
+  })
+
+  const page = await app.firstWindow()
+  await page.waitForLoadState('domcontentloaded')
+
+  return { app, page }
+}
+
+export async function closeApp(app: ElectronApplication): Promise<void> {
+  try {
+    const closeEvent = waitForAppClose(app, 5000)
+    await app.evaluate(({ app: electronApp }) => {
+      electronApp.quit()
+    })
+    await Promise.race([app.close(), closeEvent])
+  } catch (error) {
+    if (isClosedTargetError(error)) {
+      return
+    }
+
+    try {
+      const closeEvent = waitForAppClose(app, 5000)
+      await app.evaluate(({ app: electronApp }) => {
+        electronApp.exit(0)
+      })
+      await Promise.race([app.close(), closeEvent])
+    } catch (fallbackError) {
+      if (!isClosedTargetError(fallbackError)) {
+        throw fallbackError
+      }
+    }
+  }
+}
+
+export async function emitRendererMonitoringUpsert(
+  app: ElectronApplication,
+  event: {
+    terminalId: string
+    workspacePath: string
+    patternName: string
+    matchedText: string
+    status?: 'attention-needed'
+    category: 'approval' | 'input-needed' | 'error' | 'unknown'
+    confidence: 'low' | 'medium' | 'high'
+    source: 'llm' | 'no-api'
+    summary: string
+    timestamp?: number
+  }
+): Promise<void> {
+  await app.evaluate(async ({ BrowserWindow }, payload) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.webContents.send('terminal:monitoring-upsert', {
+      ...payload,
+      status: payload.status ?? 'attention-needed',
+      timestamp: payload.timestamp ?? Date.now()
+    })
+  }, event)
+}
+
+export async function emitRendererMonitoringClear(
+  app: ElectronApplication,
+  event: {
+    terminalId: string
+    reason: 'write' | 'exit'
+    timestamp?: number
+  }
+): Promise<void> {
+  await app.evaluate(async ({ BrowserWindow }, payload) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.webContents.send('terminal:monitoring-clear', {
+      ...payload,
+      timestamp: payload.timestamp ?? Date.now()
+    })
+  }, event)
+}
+
+/**
+ * Opens a known workspace through the preload bridge
+ * and waits for the main app layout (activity bar) to appear.
+ */
+export async function openRecentWorkspace(page: Page): Promise<void> {
+  // Wait for welcome screen first so the renderer is ready
+  await page.waitForSelector('.welcome', { timeout: 15000 })
+
+  // Avoid flaky recent-workspace UI dependence in Electron smoke runs.
+  await page.evaluate(async (workspacePath) => {
+    await window.workspace.openPath(workspacePath)
+  }, E2E_WORKSPACE_PATH)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+
+  // Wait for main layout to render
+  await page.waitForSelector('.activity-bar', { timeout: 15000 })
+}
+
+export async function getWorkspaceState(page: Page): Promise<any> {
+  return page.evaluate(async () => window.workspace.getState())
+}
+
+export async function invokeMonitoringTestUpsert(
+  page: Page,
+  event: {
+    terminalId: string
+    workspacePath: string
+    patternName: string
+    matchedText: string
+    status?: 'attention-needed'
+    category: 'approval' | 'input-needed' | 'error' | 'unknown'
+    confidence: 'low' | 'medium' | 'high'
+    source: 'llm' | 'no-api'
+    summary: string
+    timestamp?: number
+  }
+): Promise<void> {
+  await page.evaluate(async (payload) => {
+    await (window as any).electron.ipcRenderer.invoke('monitoring:test-upsert', {
+      ...payload,
+      status: payload.status ?? 'attention-needed',
+      timestamp: payload.timestamp ?? Date.now()
+    })
+  }, event)
+}
+
+export async function invokeMonitoringTestClear(
+  page: Page,
+  event: {
+    terminalId: string
+    reason: 'write' | 'exit'
+    timestamp?: number
+  }
+): Promise<void> {
+  await page.evaluate(async (payload) => {
+    await (window as any).electron.ipcRenderer.invoke('monitoring:test-clear', {
+      ...payload,
+      timestamp: payload.timestamp ?? Date.now()
+    })
+  }, event)
+}
+
+export async function resetWorkspaceStateFile(
+  page: Page,
+  state: Record<string, unknown>
+): Promise<void> {
+  await page.evaluate(async (payload) => {
+    await window.workspace.saveState(payload)
+  }, state)
+}

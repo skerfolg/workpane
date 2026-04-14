@@ -1,0 +1,59 @@
+/* Industrial-Precision High-Contrast Theme */
+:root[data-theme='high-contrast'] {
+  /* Background Tiers */
+  --activity-bar-bg: #000000;
+  --sidebar-bg: #0a0a0a;
+  --bg-1: #000000;
+  --bg-2: #0a0a0a;
+  --bg-3: #111111;
+  --bg-4: #1a1a1a;
+
+  /* Borders — white for maximum contrast */
+  --border-1: #ffffff;
+  --border-2: #aaaaaa;
+
+  /* Text Tiers — high contrast white */
+  --text-1: #ffffff;
+  --text-2: #cccccc;
+  --text-3: #888888;
+
+  /* Accent */
+  --accent: #4c9eff;
+  --accent-hover: #6db3ff;
+  --accent-muted: rgba(76, 158, 255, 0.2);
+  --accent-border: rgba(76, 158, 255, 0.6);
+
+  /* Semantic Colors */
+  --success: #00ff88;
+  --warning: #fbbf24;
+  --error: #ff4444;
+  --info: #4c9eff;
+
+  /* Tab Colors */
+  --tab-active-bg: var(--bg-2);
+  --tab-inactive-bg: var(--bg-1);
+
+  /* Backward compatibility aliases */
+  --color-bg-primary: var(--bg-1);
+  --color-bg-secondary: var(--bg-2);
+  --color-bg-tertiary: var(--bg-3);
+  --color-text-primary: var(--text-1);
+  --color-text-secondary: var(--text-2);
+  --color-text-muted: var(--text-3);
+  --color-border: var(--border-1);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-glow: var(--accent-muted);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-activity-bar-bg: var(--activity-bar-bg);
+  --color-terminal-bg: #000000;
+  --color-tab-active-bg: var(--tab-active-bg);
+  --color-tab-inactive-bg: var(--tab-inactive-bg);
+  --color-bg-elevated: var(--bg-4);
+  --color-border-subtle: #333333;
+  --color-surface-glass: var(--bg-3);
+  --accent-subtle: var(--accent-muted);
+}

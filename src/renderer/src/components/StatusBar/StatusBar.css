@@ -1,0 +1,195 @@
+/* IDE Redesign — StatusBar */
+.status-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 22px;
+  min-height: 22px;
+  background-color: var(--activity-bar-bg);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-family: var(--font-sans);
+  user-select: none;
+  flex-shrink: 0;
+  z-index: 100;
+  padding: 0 var(--sp-3);
+  gap: var(--sp-2);
+}
+
+.status-bar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.status-bar__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  flex: 1;
+}
+
+.status-bar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-0);
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.status-bar__item {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  height: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-xs);
+  cursor: default;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--tr-fast);
+}
+
+.status-bar__item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.status-bar__sep {
+  color: var(--text-3);
+  padding: 0 2px;
+  font-size: var(--fs-xs);
+  user-select: none;
+}
+
+.status-bar__workspace {
+  font-weight: var(--fw-medium);
+  max-width: 200px;
+}
+
+.status-bar__filename {
+  max-width: 160px;
+}
+
+.status-bar__feed {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.status-bar__feed-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 18px;
+  padding: 0 var(--sp-2);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.status-bar__feed-trigger:hover,
+.status-bar__feed-trigger--open {
+  background: rgba(245, 158, 11, 0.22);
+}
+
+.status-bar__feed-count {
+  min-width: 14px;
+  text-align: center;
+  font-weight: var(--fw-semibold, 600);
+}
+
+.status-bar__feed-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 24px));
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--color-bg-tertiary, #1f1f1f);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+  z-index: 250;
+}
+
+.status-bar__feed-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.status-bar__feed-entry:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(245, 158, 11, 0.18);
+}
+
+.status-bar__feed-entry:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.status-bar__feed-entry--active {
+  border-color: rgba(245, 158, 11, 0.18);
+}
+
+.status-bar__feed-entry-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.status-bar__feed-entry-title {
+  color: var(--text-1);
+  font-weight: var(--fw-medium);
+}
+
+.status-bar__feed-entry-time {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.status-bar__feed-entry-location,
+.status-bar__feed-entry-meta,
+.status-bar__feed-entry-detail {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-bar__feed-entry-location {
+  color: var(--text-2);
+}
+
+.status-bar__feed-entry-meta {
+  color: var(--text-3);
+}
+
+.status-bar__feed-entry-detail {
+  color: var(--text-2);
+}

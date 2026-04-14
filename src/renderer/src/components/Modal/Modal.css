@@ -1,0 +1,139 @@
+/* Industrial-Precision IDE — Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.modal {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  max-width: 95vw;
+  max-height: 85vh;
+  overflow: hidden;
+}
+
+/* Header */
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.modal__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  font-family: var(--font-sans);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.modal__close {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: color var(--tr-fast), background-color var(--tr-fast);
+  flex-shrink: 0;
+}
+
+.modal__close:hover {
+  color: var(--text-1);
+  background-color: var(--bg-3);
+}
+
+/* Body */
+.modal__body {
+  padding: var(--sp-5);
+  flex: 1;
+  overflow-y: auto;
+  font-size: var(--fs-md);
+  font-family: var(--font-sans);
+  color: var(--text-1);
+  line-height: var(--lh-normal);
+}
+
+/* Footer */
+.modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  height: 40px;
+  padding: 0 var(--sp-4);
+  border-top: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+/* Buttons */
+.modal__btn {
+  height: 28px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background-color var(--tr-fast), opacity var(--tr-fast), border-color var(--tr-fast);
+  white-space: nowrap;
+}
+
+.modal__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modal__btn--primary {
+  background-color: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+  font-weight: var(--fw-medium);
+}
+
+.modal__btn--primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.modal__btn--secondary {
+  background-color: transparent;
+  color: var(--text-1);
+  border-color: var(--border-2);
+}
+
+.modal__btn--secondary:hover:not(:disabled) {
+  background-color: var(--bg-3);
+}
+
+.modal__btn--danger {
+  background-color: var(--error);
+  color: #ffffff;
+  border-color: var(--error);
+}
+
+.modal__btn--danger:hover:not(:disabled) {
+  opacity: 0.88;
+}

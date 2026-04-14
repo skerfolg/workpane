@@ -1,0 +1,98 @@
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 var(--sp-3);
+  background-color: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+  gap: var(--sp-1);
+}
+
+.editor-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.editor-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.editor-toolbar__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: var(--sp-1) var(--sp-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--tr-fast), color var(--tr-fast), border-color var(--tr-fast);
+  white-space: nowrap;
+}
+
+.editor-toolbar__btn:hover:not(:disabled) {
+  background-color: var(--bg-3);
+  color: var(--text-1);
+}
+
+.editor-toolbar__btn:active:not(:disabled) {
+  color: var(--accent);
+}
+
+.editor-toolbar__btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.editor-toolbar__btn--italic {
+  font-style: italic;
+}
+
+.editor-toolbar__btn--strike {
+  text-decoration: line-through;
+}
+
+.editor-toolbar__btn--hide {
+  font-size: var(--fs-base);
+}
+
+.editor-toolbar__separator {
+  width: 1px;
+  height: 18px;
+  background-color: var(--border-1);
+  margin: 0 var(--sp-2);
+  flex-shrink: 0;
+}
+
+.editor-toolbar__mode-toggle {
+  padding: var(--sp-1) var(--sp-3);
+  background: none;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--tr-fast), color var(--tr-fast), border-color var(--tr-fast);
+}
+
+.editor-toolbar__mode-toggle:hover {
+  background-color: var(--bg-3);
+  color: var(--text-1);
+}
+
+.editor-toolbar__mode-toggle.active {
+  background-color: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}

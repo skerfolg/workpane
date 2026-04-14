@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-03-31T00:00:00Z",
+  "skills": [
+    {
+      "id": "workpane-issue",
+      "name": "workpane-issue",
+      "version": "1.0.0",
+      "description": "Issue tracking skill for WorkPane — create, update, and resolve issues from within your AI agent.",
+      "author": "skerfolg",
+      "tags": ["issue-tracking", "productivity", "workflow"],
+      "files": [
+        {
+          "name": "SKILL.md",
+          "url": "https://raw.githubusercontent.com/skerfolg/workpane-skills/main/skills/workpane-issue/SKILL.md",
+          "sha256": "059622be2349104baa0ad3a12b6081c8be970f04c18c264ba51462cfe3b53cd0"
+        }
+      ],
+      "agents": {
+        "claude-code": {
+          "installPath": "{projectRoot}/.claude/skills/workpane-issue"
+        },
+        "cursor": {
+          "installPath": "{projectRoot}/.cursor/rules"
+        },
+        "windsurf": {
+          "installPath": "{projectRoot}/.windsurf/rules"
+        },
+        "cline": {
+          "installPath": "{projectRoot}/.clinerules"
+        }
+      }
+    }
+  ]
+}

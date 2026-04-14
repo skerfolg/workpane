@@ -1,0 +1,198 @@
+.markdown-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-1);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+}
+
+.markdown-editor__mode-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-1) var(--sp-3);
+  background-color: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.markdown-editor__mode-btn {
+  height: 35px;
+  padding: 0 var(--sp-3);
+  background: var(--color-tab-inactive-bg);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-2);
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: color var(--tr-fast), border-color var(--tr-fast), background var(--tr-fast);
+  margin-bottom: -1px;
+}
+
+.markdown-editor__mode-btn:hover {
+  color: var(--text-1);
+  background-color: var(--bg-3);
+}
+
+.markdown-editor__mode-btn.active {
+  background: var(--color-tab-active-bg);
+  color: var(--text-1);
+  border-bottom-color: var(--accent);
+}
+
+.markdown-editor__mode-btn .tab-close {
+  opacity: 0;
+  transition: opacity var(--tr-fast);
+}
+
+.markdown-editor__mode-btn:hover .tab-close {
+  opacity: 1;
+}
+
+.markdown-editor__wysiwyg {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  outline: none;
+}
+
+.markdown-editor__wysiwyg .milkdown {
+  height: 100%;
+  outline: none;
+}
+
+.markdown-editor__wysiwyg .editor {
+  outline: none;
+  min-height: 100%;
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  font-family: var(--font-sans);
+}
+
+.markdown-editor__wysiwyg .editor h1 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-1);
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-family: var(--font-sans);
+}
+
+.markdown-editor__wysiwyg .editor h2 {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-family: var(--font-sans);
+}
+
+.markdown-editor__wysiwyg .editor h3,
+.markdown-editor__wysiwyg .editor h4 {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text-1);
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-family: var(--font-sans);
+}
+
+.markdown-editor__wysiwyg .editor p {
+  margin: 0.6em 0;
+}
+
+.markdown-editor__wysiwyg .editor code {
+  background-color: var(--bg-4);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  border: 1px solid var(--border-1);
+}
+
+.markdown-editor__wysiwyg .editor pre {
+  background-color: var(--bg-4);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+  overflow-x: auto;
+  margin: 1.2em 0;
+  border: 1px solid var(--border-1);
+}
+
+.markdown-editor__wysiwyg .editor pre code {
+  background: none;
+  padding: 0;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+}
+
+.markdown-editor__wysiwyg .editor blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 0.8em 0;
+  padding: 0.4em 1em;
+  color: var(--text-2);
+}
+
+.markdown-editor__wysiwyg .editor a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--tr-fast);
+}
+
+.markdown-editor__wysiwyg .editor a:hover {
+  border-bottom-color: var(--accent);
+}
+
+.markdown-editor__wysiwyg .editor ul,
+.markdown-editor__wysiwyg .editor ol {
+  padding-left: 1.5em;
+  margin: 0.6em 0;
+}
+
+.markdown-editor__wysiwyg .editor hr {
+  border: none;
+  border-top: 1px solid var(--border-1);
+  margin: 1.5em 0;
+}
+
+.markdown-editor__wysiwyg .editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.markdown-editor__wysiwyg .editor th,
+.markdown-editor__wysiwyg .editor td {
+  border: 1px solid var(--border-1);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.markdown-editor__wysiwyg .editor th {
+  background-color: var(--bg-3);
+  font-family: var(--font-sans);
+}
+
+.markdown-editor__wysiwyg .editor img {
+  border-radius: var(--radius-md);
+  max-width: 100%;
+}
+
+.markdown-editor__source {
+  flex: 1;
+  resize: none;
+  background-color: var(--bg-1);
+  color: var(--text-1);
+  border: none;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  padding: var(--sp-4);
+  tab-size: 2;
+}

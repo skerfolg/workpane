@@ -1,0 +1,308 @@
+.issue-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.issue-modal__dialog {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  width: 640px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+  position: relative;
+}
+
+.issue-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.issue-modal__header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.issue-modal__hash {
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  background-color: var(--bg-4);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-1);
+}
+
+.issue-modal__mode-label {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--text-1);
+}
+
+.issue-modal__header-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.issue-modal__select {
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-4);
+  color: var(--text-1);
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--tr-fast);
+}
+
+.issue-modal__select:focus {
+  border-color: var(--accent);
+}
+
+.issue-modal__close {
+  padding: var(--sp-1) var(--sp-2);
+  background: none;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  line-height: 1;
+  transition: background var(--tr-fast), color var(--tr-fast), border-color var(--tr-fast);
+}
+
+.issue-modal__close:hover {
+  color: var(--text-1);
+  background-color: var(--bg-3);
+}
+
+.issue-modal__title-row {
+  padding: var(--sp-3) var(--sp-4) 0;
+  flex-shrink: 0;
+}
+
+.issue-modal__title-input {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background-color: var(--bg-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  color: var(--text-1);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  font-family: var(--font-sans);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--tr-fast);
+}
+
+.issue-modal__title-input:focus {
+  border-color: var(--accent);
+}
+
+.issue-modal__body {
+  flex: 1;
+  padding: var(--sp-3) var(--sp-4);
+  overflow: hidden;
+  display: flex;
+}
+
+.issue-modal__content {
+  width: 100%;
+  flex: 1;
+  resize: none;
+  background-color: var(--bg-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  color: var(--text-1);
+  font-size: var(--fs-base);
+  font-family: var(--font-mono);
+  line-height: 1.7;
+  padding: var(--sp-2) var(--sp-3);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--tr-fast);
+}
+
+.issue-modal__content:focus {
+  border-color: var(--accent);
+}
+
+.issue-modal__sub-issues {
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--border-1);
+  flex-shrink: 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.issue-modal__sub-title {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  margin-bottom: var(--sp-2);
+  font-weight: 700;
+  font-family: var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.issue-modal__sub-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.issue-modal__sub-item input[type='checkbox'] {
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+
+.issue-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.issue-modal__footer-left,
+.issue-modal__footer-right {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.issue-modal__btn {
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background var(--tr-fast), border-color var(--tr-fast), opacity var(--tr-fast);
+}
+
+.issue-modal__btn--primary {
+  background-color: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.issue-modal__btn--primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.issue-modal__btn--primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.issue-modal__btn--secondary {
+  background-color: var(--bg-4);
+  color: var(--text-1);
+  border-color: var(--border-1);
+}
+
+.issue-modal__btn--secondary:hover {
+  background-color: var(--bg-3);
+}
+
+.issue-modal__btn--danger {
+  background-color: transparent;
+  color: #e05555;
+  border-color: rgba(224, 85, 85, 0.4);
+}
+
+.issue-modal__btn--danger:hover {
+  background-color: rgba(224, 85, 85, 0.1);
+  border-color: #e05555;
+}
+
+/* Delete confirmation overlay */
+.issue-modal__delete-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: var(--radius-lg);
+}
+
+.issue-modal__delete-dialog {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-float);
+  min-width: 280px;
+  max-width: 360px;
+  text-align: center;
+}
+
+.issue-modal__delete-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  margin-bottom: 8px;
+}
+
+.issue-modal__delete-issue-name {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-family: var(--font-sans);
+  margin-bottom: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issue-modal__delete-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.issue-modal__btn--delete-confirm {
+  background-color: #d94040;
+  color: white;
+  border-color: #d94040;
+  font-weight: 600;
+}
+
+.issue-modal__btn--delete-confirm:hover {
+  background-color: #c43535;
+  border-color: #c43535;
+}

@@ -1,0 +1,110 @@
+.main-area {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.main-area__pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  min-width: 0;
+  height: 100%;
+}
+
+/* Wrapper for splitter + toggle buttons */
+.main-area__splitter-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Stacked ◀ ▶ toggle buttons on splitter */
+.main-area__splitter-toggles {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 20;
+  opacity: 0;
+  transition: opacity var(--tr-normal);
+  pointer-events: none;
+}
+
+.main-area__splitter-wrap:hover .main-area__splitter-toggles {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Edge toggle wrappers for when one pane is hidden */
+.main-area__edge-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Toggle button style */
+.main-area__pane-toggle {
+  width: 14px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--tr-fast), color var(--tr-fast);
+}
+
+.main-area__pane-toggle:hover {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+/* Splitter toggles: top has rounded top corners, bottom has rounded bottom corners */
+.main-area__splitter-toggles .main-area__pane-toggle:first-child {
+  border-radius: 3px 3px 0 0;
+  border-bottom: none;
+}
+
+.main-area__splitter-toggles .main-area__pane-toggle:last-child {
+  border-radius: 0 0 3px 3px;
+}
+
+/* Edge toggles: visible by default */
+.main-area__edge-toggle--left {
+  justify-content: flex-start;
+}
+
+.main-area__edge-toggle--right {
+  justify-content: flex-end;
+}
+
+.main-area__edge-toggle .main-area__pane-toggle {
+  height: 32px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.main-area__edge-toggle--left .main-area__pane-toggle {
+  left: 0;
+  border-radius: 0 3px 3px 0;
+  border-left: none;
+}
+
+.main-area__edge-toggle--right .main-area__pane-toggle {
+  right: 0;
+  border-radius: 3px 0 0 3px;
+  border-right: none;
+}
