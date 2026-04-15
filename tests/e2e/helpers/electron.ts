@@ -1,9 +1,13 @@
+import fs from 'node:fs'
+import os from 'node:os'
 import { _electron as electron, ElectronApplication, Page } from '@playwright/test'
 import path from 'path'
 
 const E2E_WORKSPACE_PATH =
   process.env.E2E_WORKSPACE_PATH ??
   path.join(process.cwd())
+
+const appStoragePaths = new WeakMap<ElectronApplication, string>()
 
 function isClosedTargetError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
@@ -32,14 +36,20 @@ function waitForAppClose(app: ElectronApplication, timeoutMs: number): Promise<v
 
 export async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
   const mainPath = path.join(__dirname, '../../../out/main/index.js')
+  const isolatedAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'workpane-e2e-'))
 
   const app = await electron.launch({
     args: [mainPath],
     env: {
       ...process.env,
       NODE_ENV: 'test',
+      APPDATA: isolatedAppData,
+      LOCALAPPDATA: isolatedAppData,
+      TEMP: isolatedAppData,
+      TMP: isolatedAppData
     },
   })
+  appStoragePaths.set(app, isolatedAppData)
 
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
@@ -69,6 +79,12 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
       if (!isClosedTargetError(fallbackError)) {
         throw fallbackError
       }
+    }
+  } finally {
+    const isolatedAppData = appStoragePaths.get(app)
+    if (isolatedAppData) {
+      appStoragePaths.delete(app)
+      fs.rmSync(isolatedAppData, { recursive: true, force: true })
     }
   }
 }

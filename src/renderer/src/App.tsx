@@ -2,18 +2,15 @@ import React, { useState, useCallback, useEffect, Suspense, lazy } from 'react'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import { TerminalProvider, useTerminals } from './contexts/TerminalContext'
 import { EditorProvider, useEditor } from './contexts/EditorContext'
-import { IssueProvider, useIssues } from './contexts/IssueContext'
 import { KanbanProvider } from './contexts/KanbanContext'
 import { MonitoringProvider } from './contexts/MonitoringContext'
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext'
-import { SkillsProvider } from './contexts/SkillsContext'
 import { ToastProvider } from './components/Toast/Toast'
 import ActivityBar, { ViewType } from './components/ActivityBar/ActivityBar'
 import Sidebar from './components/Sidebar/Sidebar'
 import Splitter from './components/Splitter/Splitter'
 import Welcome from './components/Welcome/Welcome'
 import TitleBar from './components/TitleBar/TitleBar'
-import LoadingBar from './components/LoadingBar/LoadingBar'
 import StatusBar from './components/StatusBar/StatusBar'
 import UpdateNotification from './components/UpdateNotification/UpdateNotification'
 import NotificationBanner from './components/NotificationBanner/NotificationBanner'
@@ -59,7 +56,6 @@ function AppInner(): React.JSX.Element {
   const { toggleTheme } = useTheme()
   const { createTerminal, splitPanel, focusedPanelId } = useTerminals()
   const { activeTab, closeTab, tabs, setActiveTab, saveFile } = useEditor()
-  const { loading: issuesLoading } = useIssues()
   const { notifications, dismissNotification, handleNotificationClick } = useNotifications()
 
   const handleSidebarResize = useCallback((delta: number) => {
@@ -87,12 +83,6 @@ function AppInner(): React.JSX.Element {
       label: 'New Terminal',
       shortcut: 'Ctrl+Shift+T',
       action: createTerminal
-    },
-    {
-      id: 'toggle-kanban',
-      label: 'Toggle Kanban',
-      shortcut: 'Ctrl+Shift+K',
-      action: () => setActiveView((prev) => (prev === 'kanban' ? 'explorer' : 'kanban'))
     },
     {
       id: 'open-search',
@@ -180,7 +170,6 @@ function AppInner(): React.JSX.Element {
       if (activeTab) closeTab(activeTab.id)
     },
     onOpenSearch: () => setActiveView('search'),
-    onToggleKanban: () => setActiveView((prev) => (prev === 'kanban' ? 'explorer' : 'kanban')),
     onOpenExplorer: () => setActiveView('explorer'),
     onSaveFile: () => {
       if (activeTab) saveFile(activeTab.id)
@@ -247,13 +236,12 @@ function AppInner(): React.JSX.Element {
         onToggleEditor={() => setEditorVisible((prev) => !prev)}
         onToggleTerminal={() => setTerminalVisible((prev) => !prev)}
       />
-      <LoadingBar active={issuesLoading} />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <ActivityBar activeView={activeView} onViewChange={setActiveView} />
         {showSidebar && (
           <>
             <Sidebar
-              activeView={activeView as 'explorer' | 'search' | 'settings' | 'skills'}
+              activeView={activeView}
               width={sidebarWidth}
               isVisible={true}
               currentWorkspace={currentWorkspace}
@@ -266,7 +254,6 @@ function AppInner(): React.JSX.Element {
         )}
         <Suspense fallback={<div style={{ flex: 1 }} />}>
           <MainArea
-            activeView={activeView}
             editorVisible={editorVisible}
             terminalVisible={terminalVisible}
             onToggleEditor={() => setEditorVisible((prev) => !prev)}
@@ -431,15 +418,6 @@ function AppProviderMount(): React.JSX.Element {
   return <AppInner />
 }
 
-function AppWithSkills(): React.JSX.Element {
-  const { currentWorkspace } = useWorkspace()
-  return (
-    <SkillsProvider workspacePath={currentWorkspace?.path ?? null}>
-      <AppProviderMount />
-    </SkillsProvider>
-  )
-}
-
 function App(): React.JSX.Element {
   const _s = (window as any).__rendererStart ?? performance.now()
   useEffect(() => {
@@ -458,11 +436,9 @@ function App(): React.JSX.Element {
           <MonitoringProvider>
             <NotificationProvider>
               <EditorProvider>
-                <IssueProvider>
-                  <KanbanProvider>
-                    <AppWithSkills />
-                  </KanbanProvider>
-                </IssueProvider>
+                <KanbanProvider>
+                  <AppProviderMount />
+                </KanbanProvider>
               </EditorProvider>
             </NotificationProvider>
           </MonitoringProvider>

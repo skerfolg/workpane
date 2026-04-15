@@ -3,11 +3,9 @@ import './Sidebar.css'
 import MonitoringQueue from './MonitoringQueue'
 import { TerminalTree } from './TerminalTree'
 import { FileExplorer } from './FileExplorer'
-import { KanbanIssueDocTree } from './KanbanIssueDocTree'
 import WorkspaceSwitcher from './WorkspaceSwitcher'
 import SearchView from '../Search/SearchView'
 import SettingsView from '../Settings/SettingsView'
-import SkillsView from '../Skills/SkillsView'
 import { useMonitoring } from '../../contexts/MonitoringContext'
 
 interface WorkspaceInfo {
@@ -16,7 +14,7 @@ interface WorkspaceInfo {
 }
 
 interface SidebarProps {
-  activeView: 'explorer' | 'search' | 'settings' | 'skills'
+  activeView: 'explorer' | 'search' | 'settings'
   width: number
   isVisible: boolean
   currentWorkspace: WorkspaceInfo | null
@@ -51,7 +49,6 @@ function Sidebar({
   onOpenWorkspace,
   onOpenWorkspacePath
 }: SidebarProps): React.JSX.Element | null {
-  const [kanbanDocsSectionOpen, setKanbanDocsSectionOpen] = useState(true)
   const [terminalSectionOpen, setTerminalSectionOpen] = useState(true)
   const [queueSectionOpen, setQueueSectionOpen] = useState(true)
   const [fileExplorerSectionOpen, setFileExplorerSectionOpen] = useState(true)
@@ -75,18 +72,7 @@ function Sidebar({
       <div className="sidebar__content">
         {activeView === 'explorer' ? (
           <div className="sidebar__explorer">
-            {/* Section 1: Kanban Issue Docs */}
-            <div className="sidebar__section">
-              <div
-                className="sidebar__section-header"
-                onClick={() => setKanbanDocsSectionOpen((o) => !o)}
-              >
-                <span className="sidebar__section-chevron">{kanbanDocsSectionOpen ? '▾' : '▶'}</span>
-                <span>Kanban Issue Docs</span>
-              </div>
-              {kanbanDocsSectionOpen && <KanbanIssueDocTree />}
-            </div>
-            {/* Section 2: Terminal */}
+            {/* Section 1: Terminal */}
             <div className="sidebar__section">
               <div
                 className="sidebar__section-header"
@@ -123,7 +109,7 @@ function Sidebar({
                 </>
               )}
             </div>
-            {/* Section 3: File Explorer */}
+            {/* Section 2: File Explorer */}
             <div className="sidebar__section">
               <div
                 className="sidebar__section-header"
@@ -141,8 +127,6 @@ function Sidebar({
           <SearchView />
         ) : activeView === 'settings' ? (
           <SettingsView />
-        ) : activeView === 'skills' ? (
-          <SkillsView />
         ) : null}
       </div>
     </div>

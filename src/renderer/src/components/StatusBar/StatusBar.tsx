@@ -1,6 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from 'react'
 import { EditorContext } from '../../contexts/EditorContext'
-import { IssueContext } from '../../contexts/IssueContext'
 import { useMonitoring } from '../../contexts/MonitoringContext'
 import { TerminalContext } from '../../contexts/TerminalContext'
 import './StatusBar.css'
@@ -11,14 +10,11 @@ interface StatusBarProps {
 
 export function StatusBar({ workspaceName }: StatusBarProps): React.JSX.Element {
   const editorCtx = useContext(EditorContext)
-  const issueCtx = useContext(IssueContext)
   const terminalCtx = useContext(TerminalContext)
   const { globalAggregate, globalTransitionFeed } = useMonitoring()
   const [isFeedOpen, setIsFeedOpen] = useState(false)
   const feedRef = useRef<HTMLDivElement | null>(null)
 
-  const openCount = issueCtx?.issues.filter((i) => i.status === 'open').length ?? 0
-  const inProgCount = issueCtx?.issues.filter((i) => i.status === 'in-progress').length ?? 0
   const terminalCount = terminalCtx?.terminals.length ?? 0
   const activeFile = editorCtx?.activeTab?.title ?? null
   const attentionCount = globalAggregate.attentionNeededCount
@@ -74,16 +70,8 @@ export function StatusBar({ workspaceName }: StatusBarProps): React.JSX.Element 
       </div>
 
       <div className="status-bar__center">
-        {issueCtx && (
-          <span className="status-bar__item" title="Issue stats">
-            {openCount} open
-            <span className="status-bar__sep">│</span>
-            {inProgCount} in-prog
-          </span>
-        )}
         {attentionCount > 0 && (
           <>
-            {issueCtx && <span className="status-bar__sep">│</span>}
             <span
               className="status-bar__item"
               title="App-wide attention-needed sessions"
@@ -95,7 +83,7 @@ export function StatusBar({ workspaceName }: StatusBarProps): React.JSX.Element 
         )}
         {hasFeedEntries && (
           <>
-            {(issueCtx || attentionCount > 0) && <span className="status-bar__sep">│</span>}
+            {attentionCount > 0 && <span className="status-bar__sep">│</span>}
             <div className="status-bar__feed" ref={feedRef}>
               <button
                 type="button"

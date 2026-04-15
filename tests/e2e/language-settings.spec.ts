@@ -1,16 +1,25 @@
 import { test, expect } from '@playwright/test'
 import { launchApp, closeApp, openRecentWorkspace } from './helpers/electron'
 
+async function setLanguage(page: Parameters<typeof openRecentWorkspace>[0], language: 'en' | 'ko'): Promise<void> {
+  await page.evaluate(async (value) => {
+    await window.settings.set('general.language', value)
+  }, language)
+}
+
 test.describe('Language Settings', () => {
-  test('activity bar tooltips are in English by default', async () => {
+  test('activity bar tooltips follow persisted English language', async () => {
     const { app, page } = await launchApp()
 
     try {
+      await setLanguage(page, 'en')
       await openRecentWorkspace(page)
 
-      // Settings button tooltip should be English (saved setting is 'en')
-      const settingsBtn = page.locator('.activity-bar__item').last()
-      await expect(settingsBtn).toHaveAttribute('title', 'Settings')
+      await expect(page.locator('[data-testid="activity-bar-explorer"]')).toHaveAttribute('title', 'Explorer')
+      await expect(page.locator('[data-testid="activity-bar-search"]')).toHaveAttribute('title', 'Search')
+      await expect(page.locator('[data-testid="activity-bar-settings"]')).toHaveAttribute('title', 'Settings')
+      await expect(page.locator('[data-testid="activity-bar-kanban"]')).toHaveCount(0)
+      await expect(page.locator('[data-testid="activity-bar-skills"]')).toHaveCount(0)
 
       await page.screenshot({ path: 'artifacts/04-tooltips-english.png' })
     } finally {
@@ -22,25 +31,25 @@ test.describe('Language Settings', () => {
     const { app, page } = await launchApp()
 
     try {
+      await setLanguage(page, 'en')
       await openRecentWorkspace(page)
 
-      // Open settings (last item)
-      await page.locator('.activity-bar__item').last().click()
+      await page.locator('[data-testid="activity-bar-settings"]').click()
       await page.waitForSelector('.settings-view', { timeout: 15000 })
 
-      // Switch to Korean
       const langSelect = page.locator('select').first()
       await langSelect.selectOption('ko')
 
-      // Tooltip should update immediately
-      const settingsBtn = page.locator('.activity-bar__item').last()
-      await expect(settingsBtn).toHaveAttribute('title', '설정')
+      await expect(page.locator('[data-testid="activity-bar-explorer"]')).toHaveAttribute('title', '탐색기')
+      await expect(page.locator('[data-testid="activity-bar-search"]')).toHaveAttribute('title', '검색')
+      await expect(page.locator('[data-testid="activity-bar-settings"]')).toHaveAttribute('title', '설정')
 
       await page.screenshot({ path: 'artifacts/05-tooltips-korean.png' })
 
-      // Switch back to English
       await langSelect.selectOption('en')
-      await expect(settingsBtn).toHaveAttribute('title', 'Settings')
+      await expect(page.locator('[data-testid="activity-bar-explorer"]')).toHaveAttribute('title', 'Explorer')
+      await expect(page.locator('[data-testid="activity-bar-search"]')).toHaveAttribute('title', 'Search')
+      await expect(page.locator('[data-testid="activity-bar-settings"]')).toHaveAttribute('title', 'Settings')
 
       await page.screenshot({ path: 'artifacts/06-tooltips-back-english.png' })
     } finally {
@@ -52,9 +61,10 @@ test.describe('Language Settings', () => {
     const { app, page } = await launchApp()
 
     try {
+      await setLanguage(page, 'en')
       await openRecentWorkspace(page)
 
-      await page.locator('.activity-bar__item').last().click()
+      await page.locator('[data-testid="activity-bar-settings"]').click()
       await page.waitForSelector('.settings-view', { timeout: 15000 })
 
       const langSelect = page.locator('select').first()

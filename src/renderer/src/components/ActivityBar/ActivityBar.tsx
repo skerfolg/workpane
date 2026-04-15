@@ -1,10 +1,9 @@
 import React from 'react'
-import { FolderTree, Columns3, Search, Settings, Puzzle } from 'lucide-react'
+import { FolderTree, Search, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useKanban } from '../../contexts/KanbanContext'
 import './ActivityBar.css'
 
-export type ViewType = 'explorer' | 'kanban' | 'search' | 'settings' | 'skills'
+export type ViewType = 'explorer' | 'search' | 'settings'
 
 interface ActivityBarProps {
   activeView: ViewType
@@ -19,15 +18,10 @@ interface NavItem {
 
 const ActivityBar: React.FC<ActivityBarProps> = ({ activeView, onViewChange }) => {
   const { t } = useTranslation()
-  const { issues } = useKanban()
-
-  const openCount = issues.filter((i) => i.status === 'todo').length
 
   const items: NavItem[] = [
     { id: 'explorer', icon: <FolderTree size={18} />, labelKey: 'activityBar.explorer' },
-    { id: 'kanban', icon: <Columns3 size={18} />, labelKey: 'activityBar.kanban' },
     { id: 'search', icon: <Search size={18} />, labelKey: 'activityBar.search' },
-    { id: 'skills', icon: <Puzzle size={18} />, labelKey: 'activityBar.skills' },
     { id: 'settings', icon: <Settings size={18} />, labelKey: 'activityBar.settings' }
   ]
 
@@ -37,17 +31,13 @@ const ActivityBar: React.FC<ActivityBarProps> = ({ activeView, onViewChange }) =
         <button
           key={item.id}
           className={`activity-bar__item${activeView === item.id ? ' activity-bar__item--active' : ''}`}
+          data-testid={`activity-bar-${item.id}`}
           onClick={() => onViewChange(item.id)}
           title={t(item.labelKey)}
           aria-label={t(item.labelKey)}
           aria-pressed={activeView === item.id}
         >
           {item.icon}
-          {item.id === 'kanban' && openCount > 0 && (
-            <span className="activity-bar__badge" aria-label={`${openCount} open issues`}>
-              {openCount > 99 ? '99+' : openCount}
-            </span>
-          )}
         </button>
       ))}
     </div>

@@ -11,7 +11,6 @@ export interface KeyboardShortcutsConfig {
   onNextTab: () => void
   onCloseTab: () => void
   onOpenSearch: () => void
-  onToggleKanban: () => void
   onOpenExplorer: () => void
   onSaveFile: () => void
 }
@@ -29,7 +28,6 @@ export function useKeyboardShortcuts(config: KeyboardShortcutsConfig): void {
       onNextTab,
       onCloseTab,
       onOpenSearch,
-      onToggleKanban,
       onOpenExplorer,
       onSaveFile
     } = config
@@ -105,13 +103,6 @@ export function useKeyboardShortcuts(config: KeyboardShortcutsConfig): void {
       if (ctrl && shift && e.key === 'F') {
         e.preventDefault()
         onOpenSearch()
-        return
-      }
-
-      // Ctrl+Shift+K — Toggle Kanban
-      if (ctrl && shift && e.key === 'K') {
-        e.preventDefault()
-        onToggleKanban()
         return
       }
 

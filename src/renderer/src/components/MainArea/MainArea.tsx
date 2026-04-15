@@ -4,19 +4,17 @@ import TerminalArea from './TerminalArea'
 import Splitter from '../Splitter/Splitter'
 import './MainArea.css'
 
-// Lazy-load heavy editor and kanban components
+// Lazy-load heavy editor components
 const MarkdownArea = lazy(() => import('./MarkdownArea'))
-const KanbanBoard = lazy(() => import('../Kanban/KanbanBoard').then(m => ({ default: m.KanbanBoard })))
 
 interface MainAreaProps {
-  activeView?: string
   editorVisible?: boolean
   terminalVisible?: boolean
   onToggleEditor?: () => void
   onToggleTerminal?: () => void
 }
 
-function MainArea({ activeView, editorVisible: editorVisibleProp, terminalVisible: terminalVisibleProp, onToggleEditor, onToggleTerminal }: MainAreaProps): React.JSX.Element {
+function MainArea({ editorVisible: editorVisibleProp, terminalVisible: terminalVisibleProp, onToggleEditor, onToggleTerminal }: MainAreaProps): React.JSX.Element {
   const [markdownWidth, setMarkdownWidth] = useState<number>(50) // percent
   const markdownVisible = editorVisibleProp ?? true
   const terminalVisible = terminalVisibleProp ?? true
@@ -37,11 +35,10 @@ function MainArea({ activeView, editorVisible: editorVisibleProp, terminalVisibl
   }, [])
 
   const bothVisible = markdownVisible && terminalVisible
-  const isKanban = activeView === 'kanban'
 
   const leftPaneContent = (
     <Suspense fallback={<div style={{ flex: 1, background: 'var(--color-bg-primary)' }} />}>
-      {isKanban ? <KanbanBoard /> : <MarkdownArea />}
+      <MarkdownArea />
     </Suspense>
   )
 

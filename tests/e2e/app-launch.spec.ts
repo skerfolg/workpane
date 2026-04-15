@@ -23,12 +23,18 @@ test.describe('App Launch', () => {
     try {
       await openRecentWorkspace(page)
 
-      // Activity bar should be visible after opening workspace
       await expect(page.locator('.activity-bar')).toBeVisible()
-
-      // Should have 5 items: explorer, kanban, search, skills, settings
-      const items = page.locator('.activity-bar__item')
-      await expect(items).toHaveCount(5)
+      await expect(page.locator('.activity-bar__item')).toHaveCount(3)
+      await expect(page.locator('[data-testid="activity-bar-explorer"]')).toBeVisible()
+      await expect(page.locator('[data-testid="activity-bar-search"]')).toBeVisible()
+      await expect(page.locator('[data-testid="activity-bar-settings"]')).toBeVisible()
+      await expect(page.locator('[data-testid="activity-bar-kanban"]')).toHaveCount(0)
+      await expect(page.locator('[data-testid="activity-bar-skills"]')).toHaveCount(0)
+      await expect(page.locator('.sidebar')).toBeVisible()
+      await expect(page.locator('.sidebar')).toContainText('Terminal')
+      await expect(page.locator('.sidebar')).toContainText('File Explorer')
+      await expect(page.locator('.sidebar')).not.toContainText('Kanban Issue Docs')
+      await expect(page.locator('.status-bar')).toBeVisible()
 
       await page.screenshot({ path: 'artifacts/02-main-app.png' })
     } finally {
@@ -36,14 +42,14 @@ test.describe('App Launch', () => {
     }
   })
 
-  test('welcome skills info text is in English', async () => {
+  test('welcome screen keeps workspace-first copy only', async () => {
     const { app, page } = await launchApp()
 
     try {
       await page.waitForSelector('.welcome', { timeout: 15000 })
-
-      const skillsInfo = page.locator('.welcome__skills-info span')
-      await expect(skillsInfo).toContainText('Open a workspace to browse and install coding agent skills')
+      await expect(page.locator('.welcome__subtitle')).toBeVisible()
+      await expect(page.locator('.welcome__btn--primary')).toBeVisible()
+      await expect(page.locator('.welcome__skills-info')).toHaveCount(0)
 
       await page.screenshot({ path: 'artifacts/03-welcome-skills-info.png' })
     } finally {
