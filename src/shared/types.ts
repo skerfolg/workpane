@@ -20,66 +20,6 @@ export interface DocGroup {
   source: 'standard' | 'project'
 }
 
-// Skills — bundled skill info (from resources/skills/*/skill.json)
-export interface SkillInfo {
-  name: string
-  version: string
-  description: string
-  files: string[]
-  docsStructure: string[]
-}
-
-// Registry skill file with required SHA-256 checksum
-export interface RegistrySkillFile {
-  name: string
-  url: string
-  sha256: string
-}
-
-// Per-agent install configuration (e.g. Claude Code, Cursor, Windsurf)
-export interface AgentInstallConfig {
-  installPath: string // e.g. "{projectRoot}/.claude/skills/{skillId}"
-}
-
-// A skill entry in the remote registry
-export interface RegistrySkill {
-  id: string
-  name: string
-  version: string
-  description: string
-  author: string
-  tags: string[]
-  files: RegistrySkillFile[]
-  agents: Record<string, AgentInstallConfig>
-}
-
-// Top-level registry manifest
-export interface SkillRegistry {
-  version: string
-  lastUpdated: string
-  skills: RegistrySkill[]
-}
-
-// Record stored in .claude/installed-skills.json per installed registry skill
-export interface InstalledSkillRecord {
-  skillId: string
-  version: string
-  agentId: string
-  installedAt: string
-  installPath: string
-}
-
-// Unified view merging bundled + registry skills for the UI
-export interface UnifiedSkill {
-  id: string
-  name: string
-  version: string
-  description: string
-  source: 'bundled' | 'registry'
-  agents: Record<string, AgentInstallConfig>
-  tags: string[]
-}
-
 export type LlmProviderId = 'gemini' | 'groq' | 'anthropic' | 'openai'
 
 export const LLM_PROVIDER_IDS: LlmProviderId[] = ['gemini', 'groq', 'anthropic', 'openai']

@@ -7,7 +7,79 @@ const E2E_WORKSPACE_PATH =
   process.env.E2E_WORKSPACE_PATH ??
   path.join(process.cwd())
 
+export const WORKSPACE_PATH = E2E_WORKSPACE_PATH
+
 const appStoragePaths = new WeakMap<ElectronApplication, string>()
+const pageToApp = new WeakMap<Page, ElectronApplication>()
+const workspaceStateBackups = new WeakMap<
+  ElectronApplication,
+  Map<string, { existed: boolean; content: string | null }>
+>()
+
+function getWorkspaceStatePath(workspacePath: string): string {
+  return path.join(workspacePath, '.workspace', 'state.json')
+}
+
+function ensureWorkspaceStateBackup(page: Page, workspacePath: string): void {
+  const app = pageToApp.get(page)
+  if (!app) {
+    throw new Error('Missing Electron application handle for page-backed workspace mutation')
+  }
+
+  let backups = workspaceStateBackups.get(app)
+  if (!backups) {
+    backups = new Map()
+    workspaceStateBackups.set(app, backups)
+  }
+
+  const workspaceStatePath = getWorkspaceStatePath(workspacePath)
+  if (backups.has(workspaceStatePath)) {
+    return
+  }
+
+  if (fs.existsSync(workspaceStatePath)) {
+    backups.set(workspaceStatePath, {
+      existed: true,
+      content: fs.readFileSync(workspaceStatePath, 'utf-8')
+    })
+    return
+  }
+
+  backups.set(workspaceStatePath, {
+    existed: false,
+    content: null
+  })
+}
+
+function writeWorkspaceStateFile(
+  page: Page,
+  workspacePath: string,
+  state: Record<string, unknown>
+): void {
+  ensureWorkspaceStateBackup(page, workspacePath)
+  const workspaceStatePath = getWorkspaceStatePath(workspacePath)
+  fs.mkdirSync(path.dirname(workspaceStatePath), { recursive: true })
+  fs.writeFileSync(workspaceStatePath, JSON.stringify(state), 'utf-8')
+}
+
+function restoreBackedUpWorkspaceStates(app: ElectronApplication): void {
+  const backups = workspaceStateBackups.get(app)
+  if (!backups) {
+    return
+  }
+
+  for (const [workspaceStatePath, backup] of backups.entries()) {
+    if (backup.existed) {
+      fs.mkdirSync(path.dirname(workspaceStatePath), { recursive: true })
+      fs.writeFileSync(workspaceStatePath, backup.content ?? '{}', 'utf-8')
+      continue
+    }
+
+    fs.rmSync(workspaceStatePath, { force: true })
+  }
+
+  workspaceStateBackups.delete(app)
+}
 
 function isClosedTargetError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
@@ -52,6 +124,7 @@ export async function launchApp(): Promise<{ app: ElectronApplication; page: Pag
   appStoragePaths.set(app, isolatedAppData)
 
   const page = await app.firstWindow()
+  pageToApp.set(page, app)
   await page.waitForLoadState('domcontentloaded')
 
   return { app, page }
@@ -81,6 +154,7 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
       }
     }
   } finally {
+    restoreBackedUpWorkspaceStates(app)
     const isolatedAppData = appStoragePaths.get(app)
     if (isolatedAppData) {
       appStoragePaths.delete(app)
@@ -139,6 +213,8 @@ export async function openRecentWorkspace(page: Page): Promise<void> {
   // Wait for welcome screen first so the renderer is ready
   await page.waitForSelector('.welcome', { timeout: 15000 })
 
+  writeWorkspaceStateFile(page, E2E_WORKSPACE_PATH, {})
+
   // Avoid flaky recent-workspace UI dependence in Electron smoke runs.
   await page.evaluate(async (workspacePath) => {
     await window.workspace.openPath(workspacePath)
@@ -195,9 +271,8 @@ export async function invokeMonitoringTestClear(
 
 export async function resetWorkspaceStateFile(
   page: Page,
-  state: Record<string, unknown>
+  state: Record<string, unknown>,
+  workspacePath = WORKSPACE_PATH
 ): Promise<void> {
-  await page.evaluate(async (payload) => {
-    await window.workspace.saveState(payload)
-  }, state)
+  writeWorkspaceStateFile(page, workspacePath, state)
 }

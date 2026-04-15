@@ -15,7 +15,7 @@ interface MainAreaProps {
 }
 
 function MainArea({ editorVisible: editorVisibleProp, terminalVisible: terminalVisibleProp, onToggleEditor, onToggleTerminal }: MainAreaProps): React.JSX.Element {
-  const [markdownWidth, setMarkdownWidth] = useState<number>(50) // percent
+  const [markdownWidth, setMarkdownWidth] = useState<number>(40) // percent
   const markdownVisible = editorVisibleProp ?? true
   const terminalVisible = terminalVisibleProp ?? true
   const setMarkdownVisible = (v: boolean | ((prev: boolean) => boolean)) => {

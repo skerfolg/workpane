@@ -9,7 +9,6 @@ import { WorkspaceManager } from './workspace-manager'
 import { WatcherManager } from './file-watcher'
 import { searchFiles, replaceInFiles, invalidateSearchCache } from './search-service'
 import { ApiServer } from './api-server'
-import { SkillsManager } from './skills-manager'
 import { CrashRecovery } from './crash-recovery'
 import { assertWithinWorkspace } from './path-validator'
 import { ApprovalDetector } from './approval-detector'
@@ -43,7 +42,6 @@ watcherManager.onFlush((rootDir) => {
 const apiServer = new ApiServer(terminalManager, workspaceManager, settingsManager)
 const mcpBrowserHandler = new McpBrowserHandler(browserManager)
 apiServer.setMcpBrowserHandler(mcpBrowserHandler)
-const skillsManager = new SkillsManager()
 const crashRecovery = new CrashRecovery()
 let mainWindow: BrowserWindow | null = null
 const monitoredTerminals = new Map<string, SessionMonitoringState>()
@@ -589,43 +587,6 @@ ipcMain.handle('search:find', async (_event, { rootDir, query, options }: { root
 
 ipcMain.handle('search:replace', (_event, { rootDir, query, replacement, filePaths, options }: { rootDir: string; query: string; replacement: string; filePaths: string[]; options?: { caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean } }) => {
   return replaceInFiles(rootDir, query, replacement, filePaths, options)
-})
-
-// IPC handlers for skills
-ipcMain.handle('skills:get-available', () => {
-  return skillsManager.getAvailableSkills()
-})
-
-ipcMain.handle('skills:get-installed', (_event, projectPath: string) => {
-  return skillsManager.getInstalledSkills(projectPath)
-})
-
-ipcMain.handle('skills:install', (_event, skillName: string, projectPath: string) => {
-  skillsManager.installSkill(skillName, projectPath)
-})
-
-ipcMain.handle('skills:uninstall', (_event, skillName: string, projectPath: string) => {
-  skillsManager.uninstallSkill(skillName, projectPath)
-})
-
-ipcMain.handle('skills:get-unified', () => {
-  return skillsManager.getUnifiedSkills()
-})
-
-ipcMain.handle('skills:get-installed-records', (_event, projectPath: string) => {
-  return skillsManager.getInstalledRecords(projectPath)
-})
-
-ipcMain.handle('skills:install-registry', (_event, skillId: string, agentId: string, projectPath: string) => {
-  return skillsManager.installRegistrySkill(skillId, agentId, projectPath)
-})
-
-ipcMain.handle('skills:uninstall-registry', (_event, skillId: string, agentId: string, projectPath: string) => {
-  return skillsManager.uninstallRegistrySkill(skillId, agentId, projectPath)
-})
-
-ipcMain.handle('skills:refresh-registry', () => {
-  return skillsManager.fetchRegistry()
 })
 
 // IPC handlers for crash recovery

@@ -74,9 +74,6 @@
     "files": [
       "out/**/*"
     ],
-    "extraResources": [
-      "resources/skills/**"
-    ],
     "directories": {
       "output": "dist"
     },

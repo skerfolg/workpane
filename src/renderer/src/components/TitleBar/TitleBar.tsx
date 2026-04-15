@@ -17,6 +17,7 @@ interface TitleBarProps {
   workspaceName: string | null
   sidebarVisible: boolean
   editorVisible: boolean
+  hasEditorTabs: boolean
   terminalVisible: boolean
   onToggleSidebar: () => void
   onToggleEditor: () => void
@@ -27,6 +28,7 @@ export default function TitleBar({
   workspaceName,
   sidebarVisible,
   editorVisible,
+  hasEditorTabs,
   terminalVisible,
   onToggleSidebar,
   onToggleEditor,
@@ -79,6 +81,7 @@ export default function TitleBar({
             className={`titlebar-toggle ${sidebarVisible ? 'active' : ''}`}
             onClick={onToggleSidebar}
             title="Toggle Sidebar (Ctrl+B)"
+            data-testid="titlebar-toggle-sidebar"
           >
             <PanelLeft size={14} />
           </button>
@@ -86,6 +89,8 @@ export default function TitleBar({
             className={`titlebar-toggle ${editorVisible ? 'active' : ''}`}
             onClick={onToggleEditor}
             title="Toggle Editor"
+            data-testid="titlebar-toggle-editor"
+            data-has-editor-tabs={hasEditorTabs ? 'true' : 'false'}
           >
             <FileText size={14} />
           </button>
@@ -93,6 +98,7 @@ export default function TitleBar({
             className={`titlebar-toggle ${terminalVisible ? 'active' : ''}`}
             onClick={onToggleTerminal}
             title="Toggle Terminal"
+            data-testid="titlebar-toggle-terminal"
           >
             <TerminalSquare size={14} />
           </button>

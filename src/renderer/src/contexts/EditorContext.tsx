@@ -20,7 +20,8 @@ interface SavedEditorState {
 interface EditorContextValue {
   tabs: EditorTab[]
   activeTab: EditorTab | null
-  openFile: (filePath: string) => Promise<void>
+  openRequestSequence: number
+  openFile: (filePath: string) => Promise<boolean>
   closeTab: (id: string) => void
   setActiveTab: (id: string) => void
   reorderTabs: (from: number, to: number) => void
@@ -35,12 +36,14 @@ let tabIdCounter = 0
 
 export function EditorProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [tabs, setTabs] = useState<EditorTab[]>([])
+  const [openRequestSequence, setOpenRequestSequence] = useState(0)
   const tabsRef = useRef<EditorTab[]>(tabs)
   const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Workspace-scoped editor state cache: maps workspace path → saved tab list
   const workspaceStatesRef = useRef<Map<string, SavedEditorState>>(new Map())
   const currentWorkspaceRef = useRef<string | null>(null)
+  const editorPersistenceReadyRef = useRef(false)
 
   // Keep ref in sync with state so interval callbacks see current tabs
   useEffect(() => {
@@ -175,6 +178,8 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
       // Same workspace — no-op
       if (currentWorkspaceRef.current === workspaceCwd) return
 
+      editorPersistenceReadyRef.current = false
+
       // Save current workspace state before switching (if not first load)
       if (currentWorkspaceRef.current !== null) {
         workspaceStatesRef.current.set(currentWorkspaceRef.current, serializeEditorState())
@@ -186,6 +191,7 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
       if (workspaceStatesRef.current.has(workspaceCwd)) {
         const cached = workspaceStatesRef.current.get(workspaceCwd)!
         await restoreEditorState(cached)
+        editorPersistenceReadyRef.current = true
         return
       }
 
@@ -196,6 +202,7 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
           const savedState = await wsApi.getState()
           if (savedState?.editorTabs && Array.isArray(savedState.editorTabs)) {
             await restoreEditorState(savedState as SavedEditorState)
+            editorPersistenceReadyRef.current = true
             return
           }
         } catch {
@@ -209,6 +216,7 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
         removeContent(tab.filePath)
       }
       setTabs([])
+      editorPersistenceReadyRef.current = true
     },
     [serializeEditorState, restoreEditorState]
   )
@@ -234,19 +242,12 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
     }
   }, [initEditorTabs])
 
-  // Suppress saves during startup — restored state shouldn't trigger immediate re-save
-  const editorInitDoneRef = useRef(false)
-  useEffect(() => {
-    const timer = setTimeout(() => { editorInitDoneRef.current = true }, 2000)
-    return () => clearTimeout(timer)
-  }, [])
-
   // Save editor state on tab changes (debounced)
   const editorSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     const api = (window as any).workspace
     if (!api || !currentWorkspaceRef.current) return
-    if (!editorInitDoneRef.current) return  // Skip saves during startup
+    if (!editorPersistenceReadyRef.current) return
     if (editorSaveTimeoutRef.current) clearTimeout(editorSaveTimeoutRef.current)
     editorSaveTimeoutRef.current = setTimeout(() => {
       try {
@@ -264,6 +265,9 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
   useEffect(() => {
     const handleUnload = (): void => {
       const api = (window as any).workspace
+      if (!editorPersistenceReadyRef.current) {
+        return
+      }
       if (api && currentWorkspaceRef.current) {
         try {
           api.saveState(serializeEditorState())
@@ -277,16 +281,12 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
   }, [tabs, serializeEditorState])
 
   const openFile = useCallback(async (filePath: string) => {
-    setTabs((prev) => {
-      const existing = prev.find((t) => t.filePath === filePath)
-      if (existing) {
-        return prev.map((t) => ({ ...t, isActive: t.id === existing.id }))
-      }
-      return prev
-    })
-
     const alreadyOpen = tabsRef.current.find((t) => t.filePath === filePath)
-    if (alreadyOpen) return
+    if (alreadyOpen) {
+      setTabs((prev) => prev.map((t) => ({ ...t, isActive: t.id === alreadyOpen.id })))
+      setOpenRequestSequence((prev) => prev + 1)
+      return true
+    }
 
     try {
       const perfStart = performance.now()
@@ -294,7 +294,7 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
 
       if (stat.size > MAX_FILE_SIZE) {
         console.warn(`[PERF][Renderer] openFile: file too large (${stat.size} bytes), skipping`)
-        return
+        return false
       }
 
       let fileContent: string
@@ -315,8 +315,11 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
         ...prev.map((t) => ({ ...t, isActive: false })),
         { id, filePath, title, isActive: true, isDirty: false, isConflicted: false }
       ])
+      setOpenRequestSequence((prev) => prev + 1)
+      return true
     } catch (err) {
       console.error('Failed to open file:', err)
+      return false
     }
   }, [])
 
@@ -400,7 +403,7 @@ export function EditorProvider({ children }: { children: ReactNode }): React.JSX
 
   return (
     <EditorContext.Provider
-      value={{ tabs, activeTab, openFile, closeTab, setActiveTab, reorderTabs, updateContent, saveFile, resolveConflict }}
+      value={{ tabs, activeTab, openRequestSequence, openFile, closeTab, setActiveTab, reorderTabs, updateContent, saveFile, resolveConflict }}
     >
       {children}
     </EditorContext.Provider>

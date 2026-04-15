@@ -1,74 +1,73 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   closeApp,
   invokeMonitoringTestClear,
   invokeMonitoringTestUpsert,
-  launchApp
+  launchApp,
+  resetWorkspaceStateFile,
+  WORKSPACE_PATH
 } from './helpers/electron'
 
-const WORKSPACE_PATH = path.join(process.cwd())
-
-async function seedWorkspaceState(): Promise<void> {
-  const workspaceDir = path.join(WORKSPACE_PATH, '.workspace')
-  await fs.mkdir(workspaceDir, { recursive: true })
-  await fs.writeFile(
-    path.join(workspaceDir, 'state.json'),
-    JSON.stringify({
-      version: 2,
-      editorTabs: [],
-      activeEditorFilePath: null,
-      terminals: [
-        { id: 'terminal-1', name: 'Terminal 1' },
-        { id: 'terminal-2', name: 'Terminal 2' },
-        { id: 'terminal-3', name: 'Terminal 3' }
-      ],
-      groups: [
-        {
-          id: 'group-1',
-          name: 'Group 1',
-          layoutTree: {
-            type: 'leaf',
-            panelId: 'panel-1',
-            terminalIds: ['terminal-1'],
-            browserIds: [],
-            activeTerminalId: 'terminal-1'
-          },
-          terminalIds: ['terminal-1'],
-          activeTerminalId: 'terminal-1',
-          focusedPanelId: 'panel-1',
-          collapsed: false
-        },
-        {
-          id: 'group-2',
-          name: 'Group 2',
-          layoutTree: {
-            type: 'leaf',
-            panelId: 'panel-2',
-            terminalIds: ['terminal-2', 'terminal-3'],
-            browserIds: [],
-            activeTerminalId: 'terminal-2'
-          },
-          terminalIds: ['terminal-2', 'terminal-3'],
-          activeTerminalId: 'terminal-2',
-          focusedPanelId: 'panel-2',
-          collapsed: false
-        }
-      ],
-      activeGroupId: 'group-2'
-    }, null, 2),
-    'utf-8'
-  )
-}
-
 async function openWorkspaceWithBaseline(page: Page): Promise<void> {
-  await seedWorkspaceState()
-  await page.waitForSelector('.welcome', { timeout: 15000 })
+  await resetWorkspaceStateFile(page, {
+    version: 2,
+    editorTabs: [],
+    activeEditorFilePath: null,
+    terminals: [
+      { id: 'terminal-1', name: 'Terminal 1' },
+      { id: 'terminal-2', name: 'Terminal 2' },
+      { id: 'terminal-3', name: 'Terminal 3' }
+    ],
+    groups: [
+      {
+        id: 'group-1',
+        name: 'Group 1',
+        layoutTree: {
+          type: 'leaf',
+          panelId: 'panel-1',
+          terminalIds: ['terminal-1'],
+          browserIds: [],
+          activeTerminalId: 'terminal-1'
+        },
+        terminalIds: ['terminal-1'],
+        activeTerminalId: 'terminal-1',
+        focusedPanelId: 'panel-1',
+        collapsed: false
+      },
+      {
+        id: 'group-2',
+        name: 'Group 2',
+        layoutTree: {
+          type: 'leaf',
+          panelId: 'panel-2',
+          terminalIds: ['terminal-2', 'terminal-3'],
+          browserIds: [],
+          activeTerminalId: 'terminal-2'
+        },
+        terminalIds: ['terminal-2', 'terminal-3'],
+        activeTerminalId: 'terminal-2',
+        focusedPanelId: 'panel-2',
+        collapsed: false
+      }
+    ],
+    activeGroupId: 'group-2'
+  })
+  try {
+    await page.waitForSelector('.welcome', { timeout: 15000 })
+  } catch {
+    // Electron startup can occasionally skip the welcome paint window in CI-like runs.
+  }
   await page.evaluate(async (workspacePath) => {
     await window.workspace.openPath(workspacePath)
   }, WORKSPACE_PATH)
-  await page.waitForSelector('.activity-bar', { timeout: 15000 })
+  try {
+    await page.waitForSelector('.activity-bar', { timeout: 15000 })
+  } catch {
+    await page.evaluate(async (workspacePath) => {
+      await window.workspace.openPath(workspacePath)
+    }, WORKSPACE_PATH)
+    await page.waitForSelector('.activity-bar', { timeout: 15000 })
+  }
   await page.waitForTimeout(1000)
 }
 

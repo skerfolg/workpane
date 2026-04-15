@@ -7,6 +7,8 @@ test.describe('Search Surviving Scopes', () => {
 
     try {
       await openRecentWorkspace(page)
+      await expect(page.locator('.terminal-area')).toBeVisible()
+      await expect(page.locator('.markdown-area')).toHaveCount(0)
 
       await page.locator('[data-testid="activity-bar-search"]').click()
 
@@ -24,7 +26,9 @@ test.describe('Search Surviving Scopes', () => {
       await expect(firstMatch).toBeVisible()
       await firstMatch.click()
 
+      await expect(page.locator('.markdown-area')).toBeVisible()
       await expect(page.locator('.markdown-area [role="tab"][aria-selected="true"]')).toContainText('index.ts')
+      await expect(page.locator('.status-bar__filename')).toContainText('index.ts')
     } finally {
       await closeApp(app)
     }

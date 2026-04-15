@@ -37,7 +37,7 @@ function AppInner(): React.JSX.Element {
   const [wsSwitcherOpen, setWsSwitcherOpen] = useState(false)
   const [wsSwitcherSearch, setWsSwitcherSearch] = useState('')
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [editorVisible, setEditorVisible] = useState(true)
+  const [editorVisible, setEditorVisible] = useState(false)
   const [terminalVisible, setTerminalVisible] = useState(true)
 
   const { currentWorkspace, recentWorkspaces, openWorkspace, openWorkspacePath } = useWorkspace()
@@ -54,7 +54,7 @@ function AppInner(): React.JSX.Element {
   }, [])
   const { toggleTheme } = useTheme()
   const { createTerminal, splitPanel, focusedPanelId } = useTerminals()
-  const { activeTab, closeTab, tabs, setActiveTab, saveFile } = useEditor()
+  const { activeTab, closeTab, openRequestSequence, tabs, setActiveTab, saveFile } = useEditor()
   const { notifications, dismissNotification, handleNotificationClick } = useNotifications()
 
   const handleSidebarResize = useCallback((delta: number) => {
@@ -186,6 +186,13 @@ function AppInner(): React.JSX.Element {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [wsSwitcherOpen])
 
+  useEffect(() => {
+    if (openRequestSequence === 0) {
+      return
+    }
+    setEditorVisible(true)
+  }, [openRequestSequence])
+
   const showSidebar = sidebarVisible
 
   const filteredRecent = recentWorkspaces.filter((p) => {
@@ -207,6 +214,7 @@ function AppInner(): React.JSX.Element {
           workspaceName={null}
           sidebarVisible={false}
           editorVisible={false}
+          hasEditorTabs={false}
           terminalVisible={false}
           onToggleSidebar={() => {}}
           onToggleEditor={() => {}}
@@ -230,6 +238,7 @@ function AppInner(): React.JSX.Element {
         workspaceName={currentWorkspace?.name ?? null}
         sidebarVisible={sidebarVisible}
         editorVisible={editorVisible}
+        hasEditorTabs={tabs.length > 0}
         terminalVisible={terminalVisible}
         onToggleSidebar={() => setSidebarVisible((prev) => !prev)}
         onToggleEditor={() => setEditorVisible((prev) => !prev)}
@@ -261,7 +270,7 @@ function AppInner(): React.JSX.Element {
         </Suspense>
       </div>
 
-      <StatusBar workspaceName={currentWorkspace?.name ?? null} />
+      <StatusBar workspaceName={currentWorkspace?.name ?? null} editorVisible={editorVisible} />
       <UpdateNotification />
 
       <NotificationBanner

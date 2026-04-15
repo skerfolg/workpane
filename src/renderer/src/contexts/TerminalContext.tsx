@@ -771,6 +771,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
   const workspaceStatesRef = useRef<Map<string, TerminalState>>(new Map())
   // Track the currently active workspace path
   const currentWorkspaceRef = useRef<string | null>(null)
+  const persistenceReadyRef = useRef(false)
 
   /** Compute the next terminal display number based on currently open terminal names. */
   const getNextTerminalNumber = useCallback((): number => {
@@ -801,6 +802,8 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
       // Same workspace — no-op
       if (currentWorkspaceRef.current === workspaceCwd) return
 
+      persistenceReadyRef.current = false
+
       // Save current workspace state before switching (if not first load)
       if (currentWorkspaceRef.current !== null) {
         const cur = stateRef.current
@@ -824,6 +827,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
           groups: cached.groups,
           activeGroupId: cached.activeGroupId
         })
+        persistenceReadyRef.current = true
         return
       }
 
@@ -952,6 +956,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
               activeGroupId
             })
             restored = true
+            persistenceReadyRef.current = true
             console.log(`[PERF][Renderer] TerminalContext state restore total: ${(performance.now() - restoreStart).toFixed(1)}ms`)
           }
         } catch {
@@ -963,6 +968,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
         const id = generateId()
         if (termApi) termApi.create(id, undefined, workspaceCwd)
         dispatch({ type: 'INIT_DEFAULT', id })
+        persistenceReadyRef.current = true
       }
     },
     [generateId]
@@ -998,18 +1004,11 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     }
   }, [initTerminals])
 
-  // Suppress saves during startup — restored state shouldn't trigger immediate re-save
-  const initDoneRef = useRef(false)
-  useEffect(() => {
-    const timer = setTimeout(() => { initDoneRef.current = true }, 2000)
-    return () => clearTimeout(timer)
-  }, [])
-
   // Save state on relevant state changes (debounced to avoid write storms during init)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (state.terminals.length === 0) return
-    if (!initDoneRef.current) return  // Skip saves during startup
+    if (!persistenceReadyRef.current) return
     const api = (window as any).workspace
     if (!api) return
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
@@ -1040,6 +1039,9 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
   useEffect(() => {
     const handleUnload = (): void => {
       const api = (window as any).workspace
+      if (!persistenceReadyRef.current) {
+        return
+      }
       if (api) {
         try {
           api.saveState({

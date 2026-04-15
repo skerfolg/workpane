@@ -6,9 +6,10 @@ import './StatusBar.css'
 
 interface StatusBarProps {
   workspaceName?: string | null
+  editorVisible?: boolean
 }
 
-export function StatusBar({ workspaceName }: StatusBarProps): React.JSX.Element {
+export function StatusBar({ workspaceName, editorVisible = true }: StatusBarProps): React.JSX.Element {
   const editorCtx = useContext(EditorContext)
   const terminalCtx = useContext(TerminalContext)
   const { globalAggregate, globalTransitionFeed } = useMonitoring()
@@ -16,7 +17,7 @@ export function StatusBar({ workspaceName }: StatusBarProps): React.JSX.Element 
   const feedRef = useRef<HTMLDivElement | null>(null)
 
   const terminalCount = terminalCtx?.terminals.length ?? 0
-  const activeFile = editorCtx?.activeTab?.title ?? null
+  const activeFile = editorVisible ? editorCtx?.activeTab?.title ?? null : null
   const attentionCount = globalAggregate.attentionNeededCount
   const hasFeedEntries = globalTransitionFeed.length > 0
 

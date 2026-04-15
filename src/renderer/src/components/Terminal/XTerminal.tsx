@@ -276,6 +276,7 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
     const api = (window as any).terminal
     let removeDataListener: (() => void) | undefined
     let removeExitListener: (() => void) | undefined
+    let removeTestOpenListener: (() => void) | undefined
 
     if (api) {
       // Phase 1: Wire onData into QUEUE first — captures data arriving during async IPC roundtrip
@@ -333,10 +334,17 @@ export function XTerminal({ id, isActive, onOpenFile }: XTerminalProps) {
       })
     }
 
+    // Electron e2e uses a synthetic terminal-originated open hook because xterm link clicks
+    // are not stable enough across renderers to serve as deterministic test evidence.
+    if (onOpenFile) {
+      removeTestOpenListener = api?.onTestOpenFile?.(id, onOpenFile)
+    }
+
     // Cleanup: only dispose xterm.js view, do NOT kill PTY
     return () => {
       removeDataListener?.()
       removeExitListener?.()
+      removeTestOpenListener?.()
       webglAddonRef.current?.dispose()
       webglAddonRef.current = null
       term.dispose()

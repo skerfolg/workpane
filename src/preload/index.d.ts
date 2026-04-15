@@ -4,8 +4,6 @@ import type {
   SessionMonitoringClearEvent,
   SessionMonitoringTransitionEvent,
   SessionMonitoringUpsertEvent,
-  UnifiedSkill,
-  InstalledSkillRecord,
   LlmApprovalAnalysisPreview,
   LlmModelSummary,
   LlmProviderId,
@@ -26,6 +24,8 @@ export interface TerminalAPI {
   onMonitoringUpsert: (callback: (event: SessionMonitoringUpsertEvent) => void) => () => void
   onMonitoringClear: (callback: (event: SessionMonitoringClearEvent) => void) => () => void
   onMonitoringTransition: (callback: (event: SessionMonitoringTransitionEvent) => void) => () => void
+  testOpenFile?: (terminalId: string, filePath: string) => void
+  onTestOpenFile?: (terminalId: string, callback: (filePath: string) => void) => () => void
 }
 
 export interface SettingsAPI {
@@ -137,18 +137,6 @@ export interface BrowserAPI {
   onConsoleMessage: (callback: (id: string, level: string, message: string) => void) => () => void
 }
 
-export interface SkillsAPI {
-  getAvailable: () => Promise<import('../shared/types').SkillInfo[]>
-  getInstalled: (projectPath: string) => Promise<import('../shared/types').SkillInfo[]>
-  install: (skillName: string, projectPath: string) => Promise<void>
-  uninstall: (skillName: string, projectPath: string) => Promise<void>
-  getUnified: () => Promise<UnifiedSkill[]>
-  getInstalledRecords: (projectPath: string) => Promise<InstalledSkillRecord[]>
-  installRegistry: (skillId: string, agentId: string, projectPath: string) => Promise<void>
-  uninstallRegistry: (skillId: string, agentId: string, projectPath: string) => Promise<void>
-  refreshRegistry: () => Promise<import('../shared/types').SkillRegistry>
-}
-
 export interface DownloadProgress {
   percent: number
   bytesPerSecond: number
@@ -180,7 +168,6 @@ declare global {
     theme: ThemeAPI
     updater: UpdaterAPI
     browser: BrowserAPI
-    skills: SkillsAPI
     api: unknown
   }
 }

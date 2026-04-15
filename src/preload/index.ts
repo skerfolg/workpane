@@ -12,6 +12,9 @@ const clipboardAPI = {
   writeText: (text: string): void => clipboard.writeText(text)
 }
 
+const isTestEnv = process.env.NODE_ENV === 'test'
+const terminalTestOpenListeners = new Map<string, Set<(filePath: string) => void>>()
+
 const terminalAPI = {
   create: (id: string, shell?: string, cwd?: string) =>
     ipcRenderer.invoke('terminal:create', { id, shell, cwd }),
@@ -54,7 +57,26 @@ const terminalAPI = {
     const handler = (_event: Electron.IpcRendererEvent, data: SessionMonitoringTransitionEvent) => callback(data)
     ipcRenderer.on('terminal:monitoring-transition', handler)
     return () => ipcRenderer.removeListener('terminal:monitoring-transition', handler)
-  }
+  },
+  ...(isTestEnv
+    ? {
+        testOpenFile: (terminalId: string, filePath: string) => {
+          terminalTestOpenListeners.get(terminalId)?.forEach((listener) => listener(filePath))
+        },
+        onTestOpenFile: (terminalId: string, callback: (filePath: string) => void) => {
+          const listeners = terminalTestOpenListeners.get(terminalId) ?? new Set<(filePath: string) => void>()
+          listeners.add(callback)
+          terminalTestOpenListeners.set(terminalId, listeners)
+          return () => {
+            const currentListeners = terminalTestOpenListeners.get(terminalId)
+            currentListeners?.delete(callback)
+            if (currentListeners && currentListeners.size === 0) {
+              terminalTestOpenListeners.delete(terminalId)
+            }
+          }
+        }
+      }
+    : {})
 }
 
 const settingsAPI = {
@@ -156,20 +178,6 @@ const updaterAPI = {
   check: () => ipcRenderer.invoke('updater:check')
 }
 
-const skillsAPI = {
-  getAvailable: () => ipcRenderer.invoke('skills:get-available'),
-  getInstalled: (projectPath: string) => ipcRenderer.invoke('skills:get-installed', projectPath),
-  install: (skillName: string, projectPath: string) => ipcRenderer.invoke('skills:install', skillName, projectPath),
-  uninstall: (skillName: string, projectPath: string) => ipcRenderer.invoke('skills:uninstall', skillName, projectPath),
-  getUnified: () => ipcRenderer.invoke('skills:get-unified'),
-  getInstalledRecords: (projectPath: string) => ipcRenderer.invoke('skills:get-installed-records', projectPath),
-  installRegistry: (skillId: string, agentId: string, projectPath: string) =>
-    ipcRenderer.invoke('skills:install-registry', skillId, agentId, projectPath),
-  uninstallRegistry: (skillId: string, agentId: string, projectPath: string) =>
-    ipcRenderer.invoke('skills:uninstall-registry', skillId, agentId, projectPath),
-  refreshRegistry: () => ipcRenderer.invoke('skills:refresh-registry')
-}
-
 const recoveryAPI = {
   check: (workspacePath: string) => ipcRenderer.invoke('recovery:check', workspacePath),
   recover: (workspacePath: string) => ipcRenderer.invoke('recovery:recover', workspacePath),
@@ -232,7 +240,6 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('search', searchAPI)
     contextBridge.exposeInMainWorld('theme', themeAPI)
     contextBridge.exposeInMainWorld('updater', updaterAPI)
-    contextBridge.exposeInMainWorld('skills', skillsAPI)
     contextBridge.exposeInMainWorld('recovery', recoveryAPI)
     contextBridge.exposeInMainWorld('clipboard', clipboardAPI)
     contextBridge.exposeInMainWorld('browser', browserAPI)
@@ -264,8 +271,6 @@ if (process.contextIsolated) {
   window.theme = themeAPI
   // @ts-ignore (define in dts)
   window.updater = updaterAPI
-  // @ts-ignore (define in dts)
-  window.skills = skillsAPI
   // @ts-ignore (define in dts)
   window.recovery = recoveryAPI
   // @ts-ignore (define in dts)

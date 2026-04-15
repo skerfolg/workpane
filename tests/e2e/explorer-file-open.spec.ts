@@ -13,13 +13,17 @@ test.describe('Explorer File Open', () => {
 
     try {
       await openRecentWorkspace(page)
+      await expect(page.locator('.terminal-area')).toBeVisible()
+      await expect(page.locator('.markdown-area')).toHaveCount(0)
 
       const explorerNode = getAgentsExplorerNode(page)
       await expect(explorerNode).toBeVisible()
       await explorerNode.click()
 
+      await expect(page.locator('.markdown-area')).toBeVisible()
       await expect(page.locator('.markdown-area [role="tab"][aria-selected="true"]')).toContainText('AGENTS.md')
       await expect(page.locator('.markdown-area')).toContainText('WorkPane (PromptManager)')
+      await expect(page.locator('.status-bar__filename')).toContainText('AGENTS.md')
     } finally {
       await closeApp(app)
     }

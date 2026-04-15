@@ -15,6 +15,7 @@ test.describe('Language Settings', () => {
       await setLanguage(page, 'en')
       await openRecentWorkspace(page)
 
+      await expect(page.locator('.activity-bar__item')).toHaveCount(3)
       await expect(page.locator('[data-testid="activity-bar-explorer"]')).toHaveAttribute('title', 'Explorer')
       await expect(page.locator('[data-testid="activity-bar-search"]')).toHaveAttribute('title', 'Search')
       await expect(page.locator('[data-testid="activity-bar-settings"]')).toHaveAttribute('title', 'Settings')
@@ -43,6 +44,7 @@ test.describe('Language Settings', () => {
       await expect(page.locator('[data-testid="activity-bar-explorer"]')).toHaveAttribute('title', '탐색기')
       await expect(page.locator('[data-testid="activity-bar-search"]')).toHaveAttribute('title', '검색')
       await expect(page.locator('[data-testid="activity-bar-settings"]')).toHaveAttribute('title', '설정')
+      await expect(page.locator('[data-testid="activity-bar-skills"]')).toHaveCount(0)
 
       await page.screenshot({ path: 'artifacts/05-tooltips-korean.png' })
 
