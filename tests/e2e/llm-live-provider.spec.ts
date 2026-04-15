@@ -3,6 +3,7 @@ import { closeApp, launchApp, openRecentWorkspace } from './helpers/electron'
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 
+// Non-gating smoke: keep this spec out of the deterministic CI/release gate pack.
 test.describe('LLM Live Provider Smoke', () => {
   test.skip(!OPENAI_API_KEY, 'OPENAI_API_KEY is required for live-provider smoke.')
 
@@ -56,11 +57,16 @@ test.describe('LLM Live Provider Smoke', () => {
       expect(['approval', 'input-needed', 'error', 'unknown']).toContain(result.category)
       expect(['low', 'medium', 'high']).toContain(result.confidence)
 
-      const stateAfterUse = await page.evaluate(async () => {
-        return window.llm.getSettingsState()
-      })
-      expect(stateAfterUse.providers.openai.apiKeyStored).toBe(true)
+      await expect.poll(async () => {
+        const stateAfterUse = await page.evaluate(async () => {
+          return window.llm.getSettingsState()
+        })
+        return stateAfterUse.providers.openai.apiKeyStored
+      }).toBe(true)
       if (result.source === 'llm') {
+        const stateAfterUse = await page.evaluate(async () => {
+          return window.llm.getSettingsState()
+        })
         expect(stateAfterUse.usage.openai.requestCount).toBeGreaterThan(0)
       }
 
@@ -68,10 +74,12 @@ test.describe('LLM Live Provider Smoke', () => {
         await window.llm.clearApiKey('openai')
       })
 
-      const stateAfterClear = await page.evaluate(async () => {
-        return window.llm.getSettingsState()
-      })
-      expect(stateAfterClear.providers.openai.apiKeyStored).toBe(false)
+      await expect.poll(async () => {
+        const stateAfterClear = await page.evaluate(async () => {
+          return window.llm.getSettingsState()
+        })
+        return stateAfterClear.providers.openai.apiKeyStored
+      }).toBe(false)
     } finally {
       await closeApp(app)
     }

@@ -13,9 +13,11 @@
   "include": [
     "../src/shared/types.ts",
     "../src/main/llm/fallback-chain.ts",
+    "../src/main/llm/manager.ts",
     "../src/main/llm/no-api-hint.ts",
     "../src/main/llm/provider-adapters.ts",
     "../src/renderer/src/contexts/monitoring-state.ts",
+    "./e2e/helpers/gate-pack.ts",
     "./unit/**/*.ts"
   ]
 }

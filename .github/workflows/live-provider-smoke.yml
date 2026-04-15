@@ -1,0 +1,38 @@
+name: Live Provider Smoke
+
+on:
+  workflow_call:
+    secrets:
+      OPENAI_API_KEY:
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-provider-smoke:
+    if: ${{ secrets.OPENAI_API_KEY != '' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Run live-provider smoke
+        run: npm run test:e2e:live-provider
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

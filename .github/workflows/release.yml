@@ -9,7 +9,11 @@ permissions:
   contents: write
 
 jobs:
+  deterministic-gate:
+    uses: ./.github/workflows/deterministic-gate.yml
+
   release:
+    needs: deterministic-gate
     runs-on: ${{ matrix.os }}
 
     strategy:
