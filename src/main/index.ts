@@ -6,9 +6,6 @@ import { initAutoUpdater } from './auto-updater'
 import { TerminalManager } from './terminal-manager'
 import { SettingsManager } from './settings-manager'
 import { WorkspaceManager } from './workspace-manager'
-import { scanIssues, scanAllDocs, enrichDocTitles, applyTitleUpdatesToCache, populateCache, handleFileChange, buildGroupsFromCache, parseFileOnDemand, invalidateParsedCache } from './issue-parser'
-import type { IncrementalUpdate } from './issue-parser'
-import * as kanbanStore from './kanban-store'
 import { WatcherManager } from './file-watcher'
 import { searchFiles, replaceInFiles, invalidateSearchCache } from './search-service'
 import { ApiServer } from './api-server'
@@ -36,38 +33,10 @@ const llmManager = new LlmManager(settingsManager)
 const workspaceManager = new WorkspaceManager(settingsManager)
 const watcherManager = new WatcherManager()
 
-// Invalidate caches when file changes are flushed to renderer
-// Use setImmediate to avoid blocking the main thread event loop during flush processing
-watcherManager.onFlush((rootDir, changes) => {
+// Keep search results coherent after watcher batches flush to the renderer.
+watcherManager.onFlush((rootDir) => {
   setImmediate(() => {
     invalidateSearchCache(rootDir)
-
-    // Only invalidate kanban cache when the kanban store file itself changed
-    const kanbanChanged = changes.some(c =>
-      c.path.replace(/\\/g, '/').endsWith('.workspace/kanban.json')
-    )
-    if (kanbanChanged) {
-      kanbanStore.invalidateCache(rootDir)
-    }
-
-    // Phase 3: Incremental update — process each file change
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const mdChanges = changes.filter(c =>
-      c.path.endsWith('.md') && (c.type === 'add' || c.type === 'change' || c.type === 'unlink')
-    )
-    if (mdChanges.length === 0) return
-
-    // Invalidate on-demand parse cache for changed files
-    for (const c of mdChanges) invalidateParsedCache(c.path)
-
-    Promise.all(
-      mdChanges.map(c => handleFileChange(c.type as 'add' | 'change' | 'unlink', c.path, rootDir))
-    ).then((results) => {
-      const updates = results.filter((r): r is IncrementalUpdate => r !== null)
-      if (updates.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('docs:incremental-update', updates)
-      }
-    })
   })
 })
 
@@ -551,43 +520,6 @@ ipcMain.handle('fs:gitignore', async (_event, rootPath: string) => {
   }
 })
 
-// IPC handlers for issues
-ipcMain.handle('issues:scan', async (_event, docsPath: string) => {
-  const _t = performance.now()
-  console.log(`[PERF][Main] issues:scan start path=${docsPath}`)
-  const result = await scanIssues(docsPath)
-  console.log(`[PERF][Main] issues:scan done groups=${result.length} ${(performance.now() - _t).toFixed(1)}ms`)
-  return result
-})
-
-ipcMain.handle('issues:scan-all', async (_event, projectRoot: string) => {
-  const _t = performance.now()
-  console.log(`[PERF][Main] issues:scan-all start root=${projectRoot}`)
-  const excludePaths = settingsManager.get('scanning.excludePaths') as string[] || ['node_modules', '.git', '.workspace', 'dist', 'out', 'build', 'obj', 'bin', '.vs', '.idea', 'coverage', '__pycache__', '.next', '.nuxt', 'target']
-  const result = await scanAllDocs(projectRoot, excludePaths)
-  console.log(`[PERF][Main] issues:scan-all done groups=${result.length} ${(performance.now() - _t).toFixed(1)}ms`)
-
-  // Phase 3: Populate in-memory cache for incremental updates
-  populateCache(result, projectRoot)
-
-  // Phase 2: Background title enrichment — fire-and-forget after returning initial results
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    enrichDocTitles(projectRoot, result, (updates) => {
-      applyTitleUpdatesToCache(updates)
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('docs:titles-updated', updates)
-      }
-    })
-  }
-
-  return result
-})
-
-// Phase 4: On-demand single file parsing
-ipcMain.handle('issues:parse-file', async (_event, filePath: string) => {
-  return parseFileOnDemand(filePath)
-})
-
 // IPC handlers for file watcher
 ipcMain.handle('watcher:start', (_event, dirPath: string, excludePaths?: string[]) => {
   const _t = performance.now()
@@ -707,71 +639,6 @@ ipcMain.handle('recovery:recover', (_event, workspacePath: string) => {
 
 ipcMain.handle('recovery:clear', (_event, workspacePath: string) => {
   crashRecovery.clearAutoSave(workspacePath)
-})
-
-// IPC handlers for kanban
-ipcMain.handle('kanban:load', async (_event, workspacePath: string) => {
-  const _t = performance.now()
-  console.log(`[PERF][Main] kanban:load start`)
-  const result = await kanbanStore.loadStore(workspacePath)
-  console.log(`[PERF][Main] kanban:load done issues=${result.issues.length} ${(performance.now() - _t).toFixed(1)}ms`)
-  return result
-})
-
-ipcMain.handle('kanban:create-issue', (_event, workspacePath: string, data: { title: string; description?: string; status?: string }) => {
-  return kanbanStore.createIssue(workspacePath, data)
-})
-
-ipcMain.handle('kanban:update-issue', (_event, workspacePath: string, issueId: string, updates: Parameters<typeof kanbanStore.updateIssue>[2]) => {
-  return kanbanStore.updateIssue(workspacePath, issueId, updates)
-})
-
-ipcMain.handle('kanban:delete-issue', (_event, workspacePath: string, issueId: string) => {
-  return kanbanStore.deleteIssue(workspacePath, issueId)
-})
-
-ipcMain.handle('kanban:update-status', (_event, workspacePath: string, issueId: string, status: string) => {
-  return kanbanStore.updateIssueStatus(workspacePath, issueId, status)
-})
-
-ipcMain.handle('kanban:generate-prompt', async (_event, workspacePath: string, issueId: string, templateId?: string) => {
-  const store = await kanbanStore.loadStore(workspacePath)
-  const issue = store.issues.find((i) => i.id === issueId)
-  if (!issue) return null
-  const template = templateId
-    ? store.promptTemplates.find((t) => t.id === templateId)
-    : store.promptTemplates.find((t) => t.isDefault) ?? store.promptTemplates[0]
-  if (!template) return null
-  return kanbanStore.generatePrompt(issue, template)
-})
-
-ipcMain.handle('kanban:link-doc', (_event, workspacePath: string, issueId: string, docPath: string) => {
-  return kanbanStore.linkDocument(workspacePath, issueId, docPath)
-})
-
-ipcMain.handle('kanban:unlink-doc', (_event, workspacePath: string, issueId: string, docPath: string) => {
-  return kanbanStore.unlinkDocument(workspacePath, issueId, docPath)
-})
-
-ipcMain.handle('kanban:auto-link', (_event, workspacePath: string, issueId: string) => {
-  return kanbanStore.autoLinkDocuments(workspacePath, issueId, workspacePath)
-})
-
-ipcMain.handle('kanban:get-columns', async (_event, workspacePath: string) => {
-  const store = await kanbanStore.loadStore(workspacePath)
-  return store.columns
-})
-
-ipcMain.handle('kanban:set-columns', (_event, workspacePath: string, columns: Parameters<typeof kanbanStore.updateColumns>[1]) => {
-  return kanbanStore.updateColumns(workspacePath, columns)
-})
-
-ipcMain.handle('kanban:get-templates', (_event, workspacePath: string) => {
-  return kanbanStore.getPromptTemplates(workspacePath)
-})
-
-ipcMain.handle('kanban:save-template', (_event, workspacePath: string, template: Parameters<typeof kanbanStore.savePromptTemplate>[1]) => {
-  return kanbanStore.savePromptTemplate(workspacePath, template)
 })
 
 // IPC handlers for browser

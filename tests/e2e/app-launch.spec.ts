@@ -28,12 +28,11 @@ test.describe('App Launch', () => {
       await expect(page.locator('[data-testid="activity-bar-explorer"]')).toBeVisible()
       await expect(page.locator('[data-testid="activity-bar-search"]')).toBeVisible()
       await expect(page.locator('[data-testid="activity-bar-settings"]')).toBeVisible()
-      await expect(page.locator('[data-testid="activity-bar-kanban"]')).toHaveCount(0)
       await expect(page.locator('[data-testid="activity-bar-skills"]')).toHaveCount(0)
       await expect(page.locator('.sidebar')).toBeVisible()
       await expect(page.locator('.sidebar')).toContainText('Terminal')
       await expect(page.locator('.sidebar')).toContainText('File Explorer')
-      await expect(page.locator('.sidebar')).not.toContainText('Kanban Issue Docs')
+      await expect(page.locator('.sidebar__explorer > .sidebar__section')).toHaveCount(2)
       await expect(page.locator('.status-bar')).toBeVisible()
 
       await page.screenshot({ path: 'artifacts/02-main-app.png' })

@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect, Suspense, lazy } from 'react'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import { TerminalProvider, useTerminals } from './contexts/TerminalContext'
 import { EditorProvider, useEditor } from './contexts/EditorContext'
-import { KanbanProvider } from './contexts/KanbanContext'
 import { MonitoringProvider } from './contexts/MonitoringContext'
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext'
 import { ToastProvider } from './components/Toast/Toast'
@@ -436,9 +435,7 @@ function App(): React.JSX.Element {
           <MonitoringProvider>
             <NotificationProvider>
               <EditorProvider>
-                <KanbanProvider>
-                  <AppProviderMount />
-                </KanbanProvider>
+                <AppProviderMount />
               </EditorProvider>
             </NotificationProvider>
           </MonitoringProvider>

@@ -100,18 +100,6 @@ export class SkillsManager {
       for (const docDir of skill.docsStructure ?? []) {
         const fullDocDir = join(projectPath, docDir)
         fs.mkdirSync(fullDocDir, { recursive: true })
-
-        // Create INDEX.md in issues dir
-        if (docDir.includes('issues')) {
-          const indexPath = join(fullDocDir, 'INDEX.md')
-          if (!fs.existsSync(indexPath)) {
-            fs.writeFileSync(
-              indexPath,
-              '# Issue Index\n\n| ID | Title | Status | Priority | Category | Created |\n|----|-------|--------|----------|----------|---------|\n',
-              'utf-8'
-            )
-          }
-        }
       }
     }
   }

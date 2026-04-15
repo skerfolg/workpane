@@ -1,5 +1,5 @@
 import Store from 'electron-store'
-import type { LlmSettingsState } from '../shared/types'
+import type { LlmProviderId, LlmSettingsState } from '../shared/types'
 import { LLM_PROVIDER_IDS } from '../shared/types'
 
 interface SettingsSchema {
@@ -27,9 +27,6 @@ interface SettingsSchema {
   }
   scanning: {
     excludePaths: string[]
-  }
-  kanban: {
-    columns: { id: string; label: string }[]
   }
   notification: {
     enabled: boolean
@@ -84,13 +81,6 @@ const defaults: SettingsSchema = {
   },
   scanning: {
     excludePaths: ['node_modules', '.git', 'dist', 'out', 'build']
-  },
-  kanban: {
-    columns: [
-      { id: 'open', label: 'Open' },
-      { id: 'in-progress', label: 'In Progress' },
-      { id: 'resolved', label: 'Resolved' }
-    ]
   },
   notification: {
     enabled: true,

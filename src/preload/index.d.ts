@@ -82,27 +82,6 @@ export interface FsAPI {
   getGitignorePatterns: (rootPath: string) => Promise<string[]>
 }
 
-export type IssueStatus = string
-
-export interface Issue {
-  hash: string
-  title: string
-  status: string
-  priority: string
-  category: string
-  type: string
-  filePath: string
-  date: string
-  parentHash?: string
-  seq?: number
-  children?: Issue[]
-}
-
-export interface IssuesAPI {
-  scan: (docsPath: string) => Promise<Issue[]>
-  scanAll: (projectRoot: string) => Promise<unknown[]>
-}
-
 export interface WatcherAPI {
   start: (dirPath: string, excludePaths?: string[]) => Promise<void>
   stop: () => Promise<void>
@@ -141,59 +120,6 @@ export interface SearchOptions {
 export interface SearchAPI {
   find: (rootDir: string, query: string, options: SearchOptions) => Promise<SearchResult[]>
   replace: (rootDir: string, query: string, replacement: string, filePaths: string[], options?: Omit<SearchOptions, 'scopes'>) => Promise<void>
-}
-
-export interface KanbanIssue {
-  id: string
-  title: string
-  description: string
-  status: string
-  createdAt: string
-  updatedAt: string
-  linkedDocuments: string[]
-  promptId?: string
-}
-
-export interface KanbanPrompt {
-  id: string
-  issueId: string
-  content: string
-  template: string
-  createdAt: string
-}
-
-export interface KanbanPromptTemplate {
-  id: string
-  name: string
-  template: string
-  isDefault: boolean
-}
-
-export interface KanbanColumnDef {
-  id: string
-  label: string
-}
-
-export interface KanbanStoreData {
-  issues: KanbanIssue[]
-  columns: KanbanColumnDef[]
-  promptTemplates: KanbanPromptTemplate[]
-}
-
-export interface KanbanAPI {
-  load: (workspacePath: string) => Promise<KanbanStoreData>
-  createIssue: (workspacePath: string, data: { title: string; description?: string; status?: string }) => Promise<KanbanIssue>
-  updateIssue: (workspacePath: string, issueId: string, updates: { title?: string; description?: string; status?: string; linkedDocuments?: string[]; promptId?: string }) => Promise<KanbanIssue | null>
-  deleteIssue: (workspacePath: string, issueId: string) => Promise<boolean>
-  updateStatus: (workspacePath: string, issueId: string, status: string) => Promise<KanbanIssue | null>
-  generatePrompt: (workspacePath: string, issueId: string, templateId?: string) => Promise<KanbanPrompt | null>
-  linkDoc: (workspacePath: string, issueId: string, docPath: string) => Promise<KanbanIssue | null>
-  unlinkDoc: (workspacePath: string, issueId: string, docPath: string) => Promise<KanbanIssue | null>
-  autoLink: (workspacePath: string, issueId: string) => Promise<KanbanIssue | null>
-  getColumns: (workspacePath: string) => Promise<KanbanColumnDef[]>
-  setColumns: (workspacePath: string, columns: KanbanColumnDef[]) => Promise<void>
-  getTemplates: (workspacePath: string) => Promise<KanbanPromptTemplate[]>
-  saveTemplate: (workspacePath: string, template: KanbanPromptTemplate) => Promise<KanbanPromptTemplate>
 }
 
 export interface BrowserAPI {
@@ -248,13 +174,11 @@ declare global {
     llm: LlmAPI
     workspace: WorkspaceAPI
     fs: FsAPI
-    issues: IssuesAPI
     watcher: WatcherAPI
     shell: ShellAPI
     search: SearchAPI
     theme: ThemeAPI
     updater: UpdaterAPI
-    kanban: KanbanAPI
     browser: BrowserAPI
     skills: SkillsAPI
     api: unknown

@@ -23,7 +23,6 @@ export interface SearchOptions {
 }
 
 const SCOPE_PATHS: Record<string, string> = {
-  issues: 'docs/issues/',
   docs: 'docs/',
   source: 'src/'
 }
@@ -71,7 +70,6 @@ function isBinaryFile(filePath: string): boolean {
 
 function getCategoryFromPath(filePath: string, rootDir: string): string {
   const relative = filePath.replace(/\\/g, '/').replace(rootDir.replace(/\\/g, '/') + '/', '')
-  if (relative.startsWith('docs/issues/')) return 'Issues'
   if (relative.startsWith('docs/')) return 'Docs'
   if (relative.startsWith('src/')) return 'Source'
   return 'Other'

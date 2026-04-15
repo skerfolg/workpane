@@ -16,12 +16,11 @@ interface SearchResult {
   matches: SearchMatch[]
 }
 
-type Scope = 'issues' | 'docs' | 'source'
+type Scope = 'docs' | 'source'
 
-const ALL_SCOPES: Scope[] = ['issues', 'docs', 'source']
+const ALL_SCOPES: Scope[] = ['docs', 'source']
 
 const SCOPE_LABELS: Record<Scope, string> = {
-  issues: 'Issues',
   docs: 'Docs',
   source: 'Source'
 }
@@ -151,7 +150,7 @@ export function SearchView(): React.JSX.Element {
   }, [query, replacement, results, getRootDir, handleSearch])
 
   const groups = groupByCategory(results)
-  const categoryOrder = ['Issues', 'Docs', 'Source', 'Other']
+  const categoryOrder = ['Docs', 'Source', 'Other']
   const sortedCategories = categoryOrder.filter((c) => groups[c])
 
   return (

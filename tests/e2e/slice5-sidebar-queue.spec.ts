@@ -200,7 +200,6 @@ test.describe('Slice 5 Terminal-Local Sidebar Queue', () => {
       await expect(queue).toBeVisible()
       await expect(queue).toContainText('Queue')
       await expect(page.locator('.sidebar__explorer > .sidebar__section')).toHaveCount(2)
-      await expect(page.locator('.sidebar')).not.toContainText('Kanban Issue Docs')
 
       const queueText = await queue.textContent()
       const terminal2Index = queueText?.indexOf('Terminal 2') ?? -1

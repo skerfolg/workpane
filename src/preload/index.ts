@@ -104,24 +104,6 @@ const fsAPI = {
   getGitignorePatterns: (rootPath: string) => ipcRenderer.invoke('fs:gitignore', rootPath)
 }
 
-const issuesAPI = {
-  scan: (docsPath: string) => ipcRenderer.invoke('issues:scan', docsPath),
-  scanAll: (projectRoot: string) => ipcRenderer.invoke('issues:scan-all', projectRoot),
-  onTitlesUpdated: (callback: (updates: Array<{ filePath: string; title: string }>) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, updates: Array<{ filePath: string; title: string }>) =>
-      callback(updates)
-    ipcRenderer.on('docs:titles-updated', handler)
-    return () => ipcRenderer.removeListener('docs:titles-updated', handler)
-  },
-  parseFile: (filePath: string) => ipcRenderer.invoke('issues:parse-file', filePath),
-  onIncrementalUpdate: (callback: (updates: Array<{ type: string; filePath: string; entry?: unknown }>) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, updates: Array<{ type: string; filePath: string; entry?: unknown }>) =>
-      callback(updates)
-    ipcRenderer.on('docs:incremental-update', handler)
-    return () => ipcRenderer.removeListener('docs:incremental-update', handler)
-  },
-}
-
 const watcherAPI = {
   start: (dirPath: string, excludePaths?: string[]) => ipcRenderer.invoke('watcher:start', dirPath, excludePaths),
   stop: () => ipcRenderer.invoke('watcher:stop'),
@@ -236,35 +218,6 @@ const browserAPI = {
   }
 }
 
-const kanbanAPI = {
-  load: (workspacePath: string) =>
-    ipcRenderer.invoke('kanban:load', workspacePath),
-  createIssue: (workspacePath: string, data: { title: string; description?: string; status?: string }) =>
-    ipcRenderer.invoke('kanban:create-issue', workspacePath, data),
-  updateIssue: (workspacePath: string, issueId: string, updates: { title?: string; description?: string; status?: string; linkedDocuments?: string[]; promptId?: string }) =>
-    ipcRenderer.invoke('kanban:update-issue', workspacePath, issueId, updates),
-  deleteIssue: (workspacePath: string, issueId: string) =>
-    ipcRenderer.invoke('kanban:delete-issue', workspacePath, issueId),
-  updateStatus: (workspacePath: string, issueId: string, status: string) =>
-    ipcRenderer.invoke('kanban:update-status', workspacePath, issueId, status),
-  generatePrompt: (workspacePath: string, issueId: string, templateId?: string) =>
-    ipcRenderer.invoke('kanban:generate-prompt', workspacePath, issueId, templateId),
-  linkDoc: (workspacePath: string, issueId: string, docPath: string) =>
-    ipcRenderer.invoke('kanban:link-doc', workspacePath, issueId, docPath),
-  unlinkDoc: (workspacePath: string, issueId: string, docPath: string) =>
-    ipcRenderer.invoke('kanban:unlink-doc', workspacePath, issueId, docPath),
-  autoLink: (workspacePath: string, issueId: string) =>
-    ipcRenderer.invoke('kanban:auto-link', workspacePath, issueId),
-  getColumns: (workspacePath: string) =>
-    ipcRenderer.invoke('kanban:get-columns', workspacePath),
-  setColumns: (workspacePath: string, columns: Array<{ id: string; label: string }>) =>
-    ipcRenderer.invoke('kanban:set-columns', workspacePath, columns),
-  getTemplates: (workspacePath: string) =>
-    ipcRenderer.invoke('kanban:get-templates', workspacePath),
-  saveTemplate: (workspacePath: string, template: { id: string; name: string; template: string; isDefault: boolean }) =>
-    ipcRenderer.invoke('kanban:save-template', workspacePath, template)
-}
-
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -273,7 +226,6 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('llm', llmAPI)
     contextBridge.exposeInMainWorld('workspace', workspaceAPI)
     contextBridge.exposeInMainWorld('fs', fsAPI)
-    contextBridge.exposeInMainWorld('issues', issuesAPI)
     contextBridge.exposeInMainWorld('watcher', watcherAPI)
     contextBridge.exposeInMainWorld('appWindow', windowAPI)
     contextBridge.exposeInMainWorld('shell', shellAPI)
@@ -282,7 +234,6 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('updater', updaterAPI)
     contextBridge.exposeInMainWorld('skills', skillsAPI)
     contextBridge.exposeInMainWorld('recovery', recoveryAPI)
-    contextBridge.exposeInMainWorld('kanban', kanbanAPI)
     contextBridge.exposeInMainWorld('clipboard', clipboardAPI)
     contextBridge.exposeInMainWorld('browser', browserAPI)
   } catch (error) {
@@ -302,8 +253,6 @@ if (process.contextIsolated) {
   // @ts-ignore (define in dts)
   window.fs = fsAPI
   // @ts-ignore (define in dts)
-  window.issues = issuesAPI
-  // @ts-ignore (define in dts)
   window.watcher = watcherAPI
   // @ts-ignore (define in dts)
   window.appWindow = windowAPI
@@ -319,8 +268,6 @@ if (process.contextIsolated) {
   window.skills = skillsAPI
   // @ts-ignore (define in dts)
   window.recovery = recoveryAPI
-  // @ts-ignore (define in dts)
-  window.kanban = kanbanAPI
   // @ts-ignore (define in dts)
   window.clipboard = clipboardAPI
   // @ts-ignore (define in dts)

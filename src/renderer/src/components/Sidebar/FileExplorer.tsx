@@ -3,8 +3,6 @@ import { Folder, FolderOpen, File, ChevronRight, ChevronDown } from 'lucide-reac
 import { useVirtualizer } from '@tanstack/react-virtual'
 import ignore from 'ignore'
 import { useEditor } from '../../contexts/EditorContext'
-import { useKanban } from '../../contexts/KanbanContext'
-import { LinkDocumentDialog } from '../Prompt/LinkDocumentDialog'
 import './FileExplorer.css'
 
 interface DirEntry {
@@ -84,12 +82,10 @@ const ROW_HEIGHT = 24
 
 export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.Element {
   const { openFile, activeTab } = useEditor()
-  const { issues: kanbanIssues, linkDocument, unlinkDocument } = useKanban()
 
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([])
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [renameState, setRenameState] = useState<RenameState | null>(null)
-  const [linkDialogPath, setLinkDialogPath] = useState<string | null>(null)
 
   const igRef = useRef(ignore())
   const recentRefreshRef = useRef<Set<string>>(new Set())
@@ -421,39 +417,6 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
     closeContextMenu()
   }, [contextMenu, closeContextMenu, refreshDir])
 
-  // Link / Unlink helpers
-  const docPathToIssueId = new Map<string, string>()
-  for (const issue of kanbanIssues) {
-    for (const docPath of issue.linkedDocuments) {
-      docPathToIssueId.set(docPath, issue.id)
-    }
-  }
-
-  const handleLinkToIssue = useCallback((): void => {
-    if (!contextMenu) return
-    setLinkDialogPath(contextMenu.node.entry.path)
-    closeContextMenu()
-  }, [contextMenu, closeContextMenu])
-
-  const handleUnlinkFromIssue = useCallback(async (): Promise<void> => {
-    if (!contextMenu) return
-    const filePath = contextMenu.node.entry.path
-    const issueId = docPathToIssueId.get(filePath)
-    if (issueId) {
-      await unlinkDocument(issueId, filePath)
-    }
-    closeContextMenu()
-  }, [contextMenu, closeContextMenu, docPathToIssueId, unlinkDocument])
-
-  const handleLinkDialogConfirm = useCallback(async (issueId: string): Promise<void> => {
-    if (linkDialogPath) {
-      await linkDocument(issueId, linkDialogPath)
-    }
-    setLinkDialogPath(null)
-  }, [linkDialogPath, linkDocument])
-
-  const isLinked = contextMenu ? docPathToIssueId.has(contextMenu.node.entry.path) : false
-
   const virtualItems = virtualizer.getVirtualItems()
 
   return (
@@ -608,25 +571,7 @@ export function FileExplorer({ workspacePath }: FileExplorerProps): React.JSX.El
           >
             Delete
           </button>
-          <div className="file-explorer__context-separator" />
-          {isLinked ? (
-            <button className="file-explorer__context-item" onClick={handleUnlinkFromIssue}>
-              Unlink from Issue
-            </button>
-          ) : (
-            <button className="file-explorer__context-item" onClick={handleLinkToIssue}>
-              Link to Issue
-            </button>
-          )}
         </div>
-      )}
-
-      {linkDialogPath && (
-        <LinkDocumentDialog
-          docEntry={{ filePath: linkDialogPath, title: linkDialogPath.split('/').pop() ?? '', docType: 'file', date: '', hash: '', source: 'project', topic: '', folder: '' }}
-          onConfirm={handleLinkDialogConfirm}
-          onCancel={() => setLinkDialogPath(null)}
-        />
       )}
     </div>
   )
