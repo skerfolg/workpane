@@ -90,20 +90,36 @@ function isClosedTargetError(error: unknown): boolean {
   )
 }
 
-function waitForAppClose(app: ElectronApplication, timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      app.removeListener('close', handleClose)
+function waitForCloseOperation<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
       reject(new Error(`Timed out waiting for Electron app to close after ${timeoutMs}ms`))
     }, timeoutMs)
-
-    const handleClose = () => {
-      clearTimeout(timer)
-      resolve()
-    }
-
-    app.once('close', handleClose)
   })
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) {
+      clearTimeout(timer)
+    }
+  }) as Promise<T>
+}
+
+function forceKillAppProcess(app: ElectronApplication): void {
+  const childProcess = (app as ElectronApplication & {
+    process?: () => { pid?: number; kill?: (signal?: string | number) => boolean }
+  }).process?.()
+
+  if (!childProcess?.pid) {
+    return
+  }
+
+  try {
+    childProcess.kill?.()
+  } catch {
+    // Best-effort only. The cleanup path should not mask the original test result.
+  }
 }
 
 export async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
@@ -132,26 +148,27 @@ export async function launchApp(): Promise<{ app: ElectronApplication; page: Pag
 
 export async function closeApp(app: ElectronApplication): Promise<void> {
   try {
-    const closeEvent = waitForAppClose(app, 5000)
     await app.evaluate(({ app: electronApp }) => {
       electronApp.quit()
     })
-    await Promise.race([app.close(), closeEvent])
+    await waitForCloseOperation(app.close(), 5000)
   } catch (error) {
     if (isClosedTargetError(error)) {
       return
     }
 
     try {
-      const closeEvent = waitForAppClose(app, 5000)
       await app.evaluate(({ app: electronApp }) => {
         electronApp.exit(0)
       })
-      await Promise.race([app.close(), closeEvent])
+      await waitForCloseOperation(app.close(), 5000)
     } catch (fallbackError) {
-      if (!isClosedTargetError(fallbackError)) {
-        throw fallbackError
+      if (isClosedTargetError(fallbackError)) {
+        return
       }
+
+      forceKillAppProcess(app)
+      await app.close().catch(() => {})
     }
   } finally {
     restoreBackedUpWorkspaceStates(app)
