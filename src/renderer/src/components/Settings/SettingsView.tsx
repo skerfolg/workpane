@@ -3,11 +3,14 @@ import './SettingsView.css'
 import { useTheme } from '../../contexts/ThemeContext'
 import i18n from '../../i18n'
 import type {
+  LlmExecutionLane,
   LlmModelSummary,
   LlmProviderId,
   LlmSettingsState,
-  LlmStorageStatus
+  LlmStorageStatus,
+  LlmValidationStatus
 } from '../../../../shared/types'
+import { OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID } from '../../../../shared/types'
 
 interface NotificationPattern {
   name: string
@@ -50,6 +53,16 @@ const PROVIDER_LABELS: Record<LlmProviderId, string> = {
   openai: 'OpenAI'
 }
 
+const BRIDGE_PLATFORM_COPY = 'Native Windows is the documented path. Use WSL2 only when a Linux-native workflow/runtime is needed.'
+const BRIDGE_STATUS_LABELS: Record<LlmValidationStatus, string> = {
+  unknown: 'Unknown',
+  connected: 'Connected',
+  missing_client: 'Missing Codex CLI',
+  unauthenticated: 'Sign-in required',
+  unsupported_platform: 'Unsupported platform',
+  error: 'Error'
+}
+
 const DEFAULT_SETTINGS: SettingsData = {
   general: { language: 'en', autoSave: true, autoSaveInterval: 30000 },
   appearance: { theme: 'dark' },
@@ -63,6 +76,22 @@ const BUILTIN_PATTERNS = [
   { name: 'Claude Code', pattern: 'Do you want to proceed' },
   { name: 'Codex', pattern: 'Approve|Deny' }
 ]
+
+function getBridgeStatusDetail(
+  status: LlmValidationStatus,
+  detail: string | null | undefined
+): string | null {
+  if (detail) {
+    return detail
+  }
+  if (status === 'connected') {
+    return 'Codex CLI session is ready for the official-client bridge.'
+  }
+  if (status === 'unknown') {
+    return 'Bridge status has not been checked yet.'
+  }
+  return null
+}
 
 interface SectionProps {
   title: string
@@ -94,6 +123,11 @@ export default function SettingsView(): React.JSX.Element {
   const [modelOptions, setModelOptions] = useState<Partial<Record<LlmProviderId, LlmModelSummary[]>>>({})
   const [apiKeyDrafts, setApiKeyDrafts] = useState<Partial<Record<LlmProviderId, string>>>({})
   const [llmError, setLlmError] = useState('')
+  const [bridgeActionBusy, setBridgeActionBusy] = useState<string | null>(null)
+  const [bridgeConnectInfo, setBridgeConnectInfo] = useState<{
+    terminalId: string
+    guidance: string
+  } | null>(null)
 
   useEffect(() => {
     window.settings.get().then((raw) => {
@@ -200,6 +234,19 @@ export default function SettingsView(): React.JSX.Element {
 
   const q = search.toLowerCase()
   const visible = (label: string): boolean => !q || label.toLowerCase().includes(q)
+  const orderedExecutionLanes = [...(llmSettings?.executionLanes ?? [])]
+    .sort((a, b) => a.priority - b.priority)
+  const directHttpLanes = [...orderedExecutionLanes]
+    .filter((lane) => lane.transport === 'direct_http')
+  const openAiBridgeLane =
+    orderedExecutionLanes.find((lane) => lane.laneId === OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID) ?? null
+  const bridgeStatus = openAiBridgeLane?.validationState.status ?? 'unknown'
+  const bridgeStatusDetail = getBridgeStatusDetail(
+    bridgeStatus,
+    openAiBridgeLane?.validationState.detail
+  )
+  const bridgeStatusClass = bridgeStatus.replace(/_/g, '-')
+  const bridgeConnectBlocked = bridgeStatus === 'missing_client' || bridgeStatus === 'unsupported_platform'
 
   const handleRefreshModels = useCallback(async (providerId: LlmProviderId) => {
     try {
@@ -238,16 +285,58 @@ export default function SettingsView(): React.JSX.Element {
     }
   }, [refreshLlmState])
 
-  const moveFallback = useCallback(async (providerId: LlmProviderId, delta: -1 | 1) => {
-    if (!llmSettings) return
-    const next = [...llmSettings.fallbackOrder]
-    const index = next.indexOf(providerId)
-    const swapIndex = index + delta
-    if (index === -1 || swapIndex < 0 || swapIndex >= next.length) return
-    ;[next[index], next[swapIndex]] = [next[swapIndex], next[index]]
-    await window.llm.setFallbackOrder(next)
-    await refreshLlmState()
-  }, [llmSettings, refreshLlmState])
+  const moveDirectHttpLane = useCallback(async (laneId: string, delta: -1 | 1) => {
+    try {
+      setLlmError('')
+      await window.llm.moveLane(laneId, delta)
+      await refreshLlmState()
+    } catch (error) {
+      console.error('Failed to move execution lane:', error)
+      setLlmError('Failed to update execution lane order.')
+    }
+  }, [refreshLlmState])
+
+  const handleBridgeAction = useCallback(async (action: 'connect' | 'disconnect' | 'validate' | 'refresh-state') => {
+    const laneId = openAiBridgeLane?.laneId ?? OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
+    try {
+      setBridgeActionBusy(action)
+      setLlmError('')
+      if (action !== 'connect') {
+        setBridgeConnectInfo(null)
+      }
+      switch (action) {
+        case 'connect': {
+          const result = await window.llm.connect(laneId)
+          setBridgeConnectInfo({
+            terminalId: result.terminalId,
+            guidance: result.guidance
+          })
+          break
+        }
+        case 'disconnect':
+          await window.llm.disconnect(laneId)
+          setBridgeConnectInfo(null)
+          break
+        case 'validate':
+          await window.llm.validate(laneId)
+          setBridgeConnectInfo(null)
+          break
+        case 'refresh-state':
+          await window.llm.refreshState(laneId)
+          setBridgeConnectInfo(null)
+          break
+      }
+      await refreshLlmState()
+    } catch (error) {
+      console.error(`Failed to ${action} bridge lane:`, error)
+      if (action !== 'connect') {
+        setBridgeConnectInfo(null)
+      }
+      setLlmError(`Failed to ${action} OpenAI official-client bridge.`)
+    } finally {
+      setBridgeActionBusy(null)
+    }
+  }, [openAiBridgeLane?.laneId, refreshLlmState])
 
   return (
     <div className="settings-view">
@@ -442,10 +531,10 @@ export default function SettingsView(): React.JSX.Element {
           </Section>
         )}
 
-        {(visible('llm') || visible('provider') || visible('api') || visible('model') || visible('consent') || visible('fallback') || !q) && llmSettings && (
+        {(visible('llm') || visible('provider') || visible('api') || visible('model') || visible('fallback') || visible('lane') || visible('consent') || !q) && llmSettings && (
           <Section title="LLM Integration">
             <div className="settings-row">
-              <span className="settings-row__label">Consent for API-backed analysis</span>
+              <span className="settings-row__label">Consent for provider-backed analysis</span>
               <div className="settings-row__control">
                 <input
                   type="checkbox"
@@ -455,23 +544,6 @@ export default function SettingsView(): React.JSX.Element {
                     await refreshLlmState()
                   }}
                 />
-              </div>
-            </div>
-
-            <div className="settings-row">
-              <span className="settings-row__label">Preferred Provider</span>
-              <div className="settings-row__control">
-                <select
-                  value={llmSettings.selectedProvider}
-                  onChange={async (e) => {
-                    await window.llm.setSelectedProvider(e.target.value as LlmProviderId)
-                    await refreshLlmState()
-                  }}
-                >
-                  {Object.entries(PROVIDER_LABELS).map(([providerId, label]) => (
-                    <option key={providerId} value={providerId}>{label}</option>
-                  ))}
-                </select>
               </div>
             </div>
 
@@ -488,35 +560,142 @@ export default function SettingsView(): React.JSX.Element {
             ) : null}
 
             <div className="settings-row--column">
-              <span className="settings-row__label">Fallback Order</span>
+              <span className="settings-row__label">Execution Lanes</span>
               <div className="settings-pattern-list">
-                {llmSettings.fallbackOrder.map((providerId, index) => (
-                  <div key={providerId} className="settings-pattern-row">
-                    <span className="settings-pattern-row__name">{index + 1}. {PROVIDER_LABELS[providerId]}</span>
-                    <div className="settings-row__control">
-                      <button className="settings-btn settings-btn--secondary settings-btn--small" onClick={() => void moveFallback(providerId, -1)}>Up</button>
-                      <button className="settings-btn settings-btn--secondary settings-btn--small" onClick={() => void moveFallback(providerId, 1)}>Down</button>
+                {orderedExecutionLanes.map((lane, index) => {
+                  const directHttpIndex = directHttpLanes.findIndex((entry) => entry.laneId === lane.laneId)
+                  const canMoveUp = lane.transport === 'direct_http' && directHttpIndex > 0
+                  const canMoveDown = lane.transport === 'direct_http' && directHttpIndex !== -1 && directHttpIndex < directHttpLanes.length - 1
+                  return (
+                  <div key={lane.laneId} className="settings-pattern-row">
+                    <span className="settings-pattern-row__name">{index + 1}. {PROVIDER_LABELS[lane.providerId]} · {lane.transport}</span>
+                    <div className="settings-row__control settings-row__control--wrap">
+                      {lane.transport === 'direct_http' ? (
+                        <>
+                          <span className={`settings-lane-state settings-lane-state--${lane.enabled ? 'enabled' : 'disabled'}`}>
+                            {lane.enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                          <button
+                            className="settings-btn settings-btn--secondary settings-btn--small"
+                            disabled={!canMoveUp}
+                            onClick={() => void moveDirectHttpLane(lane.laneId, -1)}
+                          >
+                            Up
+                          </button>
+                          <button
+                            className="settings-btn settings-btn--secondary settings-btn--small"
+                            disabled={!canMoveDown}
+                            onClick={() => void moveDirectHttpLane(lane.laneId, 1)}
+                          >
+                            Down
+                          </button>
+                        </>
+                      ) : (
+                        <span className={`settings-lane-state settings-lane-state--${bridgeStatusClass}`}>
+                          {BRIDGE_STATUS_LABELS[lane.validationState.status]}
+                        </span>
+                      )}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
 
-            {(Object.keys(PROVIDER_LABELS) as LlmProviderId[]).map((providerId) => {
+            {openAiBridgeLane ? (
+              <div className="settings-row--column">
+                <span className="settings-row__label">OpenAI · official_client_bridge</span>
+                <div className="settings-pattern-list">
+                  <div className="settings-pattern-row">
+                    <span className="settings-pattern-row__name">Status</span>
+                    <div className="settings-lane-detail">
+                      <span className={`settings-lane-state settings-lane-state--${bridgeStatusClass}`}>
+                        {BRIDGE_STATUS_LABELS[bridgeStatus]}
+                      </span>
+                      {bridgeStatusDetail ? (
+                        <span className="settings-pattern-row__pattern">{bridgeStatusDetail}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="settings-pattern-row settings-pattern-row--builtin">
+                    <span className="settings-pattern-row__name">Model</span>
+                    <span className="settings-pattern-row__pattern">Managed by Codex CLI</span>
+                  </div>
+                  <div className="settings-pattern-row settings-pattern-row--builtin">
+                    <span className="settings-pattern-row__name">Platform</span>
+                    <span className="settings-pattern-row__pattern">{BRIDGE_PLATFORM_COPY}</span>
+                  </div>
+                  {openAiBridgeLane.validationState.lastValidatedAt ? (
+                    <div className="settings-pattern-row settings-pattern-row--builtin">
+                      <span className="settings-pattern-row__name">Last checked</span>
+                      <span className="settings-pattern-row__pattern">{openAiBridgeLane.validationState.lastValidatedAt}</span>
+                    </div>
+                  ) : null}
+                  {bridgeConnectInfo && bridgeStatus === 'unknown' ? (
+                    <div className="settings-pattern-row settings-pattern-row--builtin">
+                      <span className="settings-pattern-row__name">Connect</span>
+                      <span className="settings-pattern-row__pattern">
+                        Pending user action in terminal {bridgeConnectInfo.terminalId}. {bridgeConnectInfo.guidance}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="settings-pattern-row">
+                    <span className="settings-pattern-row__name">Actions</span>
+                    <div className="settings-row__control settings-row__control--wrap">
+                      <button
+                        className="settings-btn settings-btn--secondary settings-btn--small"
+                        disabled={bridgeActionBusy !== null || bridgeConnectBlocked}
+                        onClick={() => void handleBridgeAction('connect')}
+                      >
+                        Connect
+                      </button>
+                      <button
+                        className="settings-btn settings-btn--secondary settings-btn--small"
+                        disabled={bridgeActionBusy !== null}
+                        onClick={() => void handleBridgeAction('refresh-state')}
+                      >
+                        Refresh State
+                      </button>
+                      <button
+                        className="settings-btn settings-btn--secondary settings-btn--small"
+                        disabled={bridgeActionBusy !== null}
+                        onClick={() => void handleBridgeAction('validate')}
+                      >
+                        Validate
+                      </button>
+                      <button
+                        className="settings-btn settings-btn--secondary settings-btn--small"
+                        disabled={bridgeActionBusy !== null}
+                        onClick={() => void handleBridgeAction('disconnect')}
+                      >
+                        Disconnect (local only)
+                      </button>
+                    </div>
+                  </div>
+                  <div className="settings-pattern-row settings-pattern-row--builtin">
+                    <span className="settings-pattern-row__name">Disconnect</span>
+                    <span className="settings-pattern-row__pattern">Local only. PromptManager does not run `codex logout` and leaves your Codex CLI session unchanged.</span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {directHttpLanes.map((lane) => {
+              const providerId = lane.providerId
               const provider = llmSettings.providers[providerId]
               const models = modelOptions[providerId] ?? []
               return (
-                <div key={providerId} className="settings-row--column">
-                  <span className="settings-row__label">{PROVIDER_LABELS[providerId]}</span>
+                <div key={lane.laneId} className="settings-row--column">
+                  <span className="settings-row__label">{PROVIDER_LABELS[providerId]} · {lane.transport}</span>
                   <div className="settings-pattern-list">
                     <div className="settings-pattern-row">
                       <span className="settings-pattern-row__name">Enabled</span>
                       <div className="settings-row__control">
                         <input
                           type="checkbox"
-                          checked={provider.enabled}
+                          checked={lane.enabled}
                           onChange={async (e) => {
-                            await window.llm.setProviderEnabled(providerId, e.target.checked)
+                            await window.llm.setLaneEnabled(lane.laneId, e.target.checked)
                             await refreshLlmState()
                           }}
                         />

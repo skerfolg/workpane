@@ -72,10 +72,6 @@
   transition: transform var(--tr-normal);
 }
 
-.settings-section__header .arrow--open {
-  transform: rotate(90deg);
-}
-
 .settings-section__body {
   padding: var(--sp-2) var(--sp-3) var(--sp-3);
 }
@@ -109,6 +105,10 @@
   justify-content: flex-end;
   align-items: center;
   gap: var(--sp-2);
+}
+
+.settings-row__control--wrap {
+  flex-wrap: wrap;
 }
 
 .settings-row input[type='text'],
@@ -163,6 +163,11 @@
 .settings-btn:hover {
   background-color: var(--bg-3);
   color: var(--text-1);
+}
+
+.settings-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .settings-btn--secondary {
@@ -220,6 +225,60 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-lane-detail {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.settings-lane-detail .settings-pattern-row__pattern {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.settings-lane-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.settings-lane-state--connected,
+.settings-lane-state--enabled {
+  background: rgba(61, 168, 120, 0.16);
+  color: #7fe0aa;
+  border-color: rgba(61, 168, 120, 0.4);
+}
+
+.settings-lane-state--unknown,
+.settings-lane-state--disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-2);
+  border-color: var(--border-1);
+}
+
+.settings-lane-state--missing-client,
+.settings-lane-state--unsupported-platform,
+.settings-lane-state--error {
+  background: rgba(224, 92, 92, 0.14);
+  color: #ff9d9d;
+  border-color: rgba(224, 92, 92, 0.35);
+}
+
+.settings-lane-state--unauthenticated {
+  background: rgba(255, 183, 77, 0.16);
+  color: #ffd08a;
+  border-color: rgba(255, 183, 77, 0.35);
 }
 
 .settings-pattern-add {

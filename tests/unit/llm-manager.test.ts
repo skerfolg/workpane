@@ -1,12 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type {
+  LlmExecutionLane,
   LlmClassificationResult,
   LlmModelSummary,
   LlmProviderId,
   LlmRuntimeInput,
   LlmSettingsState,
   LlmStorageStatus
+} from '../../src/shared/types'
+import {
+  createDirectHttpExecutionLane,
+  createLlmValidationState,
+  createOfficialClientExecutionLane,
+  ERR_NON_DIRECT_HTTP_LANE,
+  ERR_UNKNOWN_LANE_ID,
+  OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
 } from '../../src/shared/types'
 
 type SettingsLike = {
@@ -37,6 +46,12 @@ type FakeProviderAdapter = {
 function createSettingsState(): LlmSettingsState {
   return {
     consentEnabled: false,
+    executionLanes: [
+      createDirectHttpExecutionLane('gemini', true, 0),
+      createDirectHttpExecutionLane('groq', true, 1),
+      createDirectHttpExecutionLane('anthropic', false, 2),
+      createDirectHttpExecutionLane('openai', true, 3)
+    ],
     selectedProvider: 'gemini',
     fallbackOrder: ['gemini', 'groq', 'anthropic', 'openai'],
     providers: {
@@ -99,6 +114,16 @@ function createSettingsState(): LlmSettingsState {
         lastUsedAt: null
       }
     }
+  }
+}
+
+function createOfficialClientBridgeLane(
+  overrides: Partial<LlmExecutionLane> = {}
+): LlmExecutionLane {
+  return {
+    ...createOfficialClientExecutionLane('openai', true, 0),
+    validationState: createLlmValidationState('connected', 'Authenticated via Codex CLI', '2026-04-16T05:34:14.000Z'),
+    ...overrides
   }
 }
 
@@ -202,15 +227,35 @@ test.after(() => {
   credentialStoreModule.LlmCredentialStore = originalCredentialStoreCtor
 })
 
-test('setFallbackOrder deduplicates providers and appends missing supported providers', () => {
+test('moveLane reorders only direct_http lanes and keeps the bridge pinned ahead of openai direct_http', () => {
   currentCredentialStore = createCredentialStore()
   currentAdapters = {}
   const settings = createSettingsManager()
+  settings.state.executionLanes = [
+    createDirectHttpExecutionLane('gemini', true, 0),
+    createOfficialClientBridgeLane({ priority: 1 }),
+    createDirectHttpExecutionLane('openai', true, 2),
+    createDirectHttpExecutionLane('groq', true, 3),
+    createDirectHttpExecutionLane('anthropic', false, 4)
+  ]
   const manager = new LlmManager(settings as never)
 
-  manager.setFallbackOrder(['openai', 'groq', 'openai', 'invalid-provider' as never])
+  manager.moveLane('openai/direct_http', -1)
+  manager.moveLane('openai/direct_http', -1)
 
-  assert.deepEqual(settings.state.fallbackOrder, ['openai', 'groq', 'gemini', 'anthropic'])
+  assert.equal(settings.state.selectedProvider, 'openai')
+  assert.deepEqual(settings.state.fallbackOrder, ['openai', 'gemini', 'groq', 'anthropic'])
+  assert.deepEqual(
+    settings.state.executionLanes
+      .filter((lane) => lane.transport === 'direct_http')
+      .map((lane) => lane.providerId),
+    ['openai', 'gemini', 'groq', 'anthropic']
+  )
+  const bridgeIndex = settings.state.executionLanes.findIndex(
+    (lane) => lane.laneId === OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
+  )
+  const directHttpIndex = settings.state.executionLanes.findIndex((lane) => lane.laneId === 'openai/direct_http')
+  assert.equal(bridgeIndex + 1, directHttpIndex)
 })
 
 test('setApiKey and clearApiKey keep persisted apiKeyStored state in sync with the credential store', async () => {
@@ -323,6 +368,12 @@ test('classifyCandidate falls through failing providers and records usage only f
   }
   const settings = createSettingsManager()
   settings.state.consentEnabled = true
+  settings.state.executionLanes = [
+    createDirectHttpExecutionLane('groq', true, 0),
+    createDirectHttpExecutionLane('openai', true, 1),
+    createDirectHttpExecutionLane('anthropic', false, 2),
+    createDirectHttpExecutionLane('gemini', true, 3)
+  ]
   settings.state.selectedProvider = 'groq'
   settings.state.fallbackOrder = ['groq', 'openai', 'anthropic', 'gemini']
   const manager = new LlmManager(settings as never)
@@ -336,4 +387,165 @@ test('classifyCandidate falls through failing providers and records usage only f
   assert.equal(settings.state.usage.openai.inputTokens, 17)
   assert.equal(settings.state.usage.openai.outputTokens, 9)
   assert.match(settings.state.usage.openai.lastUsedAt ?? '', /^\d{4}-\d{2}-\d{2}T/)
+})
+
+test('classifyCandidate follows execution lane priority even when provider shims are stale', async () => {
+  let groqCalls = 0
+  currentCredentialStore = createCredentialStore({
+    groq: 'groq-secret',
+    openai: 'openai-secret'
+  })
+  currentAdapters = {
+    groq: {
+      async listModels() {
+        throw new Error('not used in lane-priority classify test')
+      },
+      async classifyCause() {
+        groqCalls += 1
+        return {
+          result: {
+            category: 'approval',
+            summary: 'Groq should not win',
+            confidence: 'low',
+            source: 'llm',
+            providerId: 'groq',
+            modelId: 'llama-3.3-70b-versatile',
+            recentOutputExcerpt: 'unused'
+          },
+          inputTokens: 1,
+          outputTokens: 1
+        }
+      }
+    },
+    openai: {
+      async listModels() {
+        throw new Error('not used in lane-priority classify test')
+      },
+      async classifyCause(apiKey, modelId, recentOutput) {
+        assert.equal(apiKey, 'openai-secret')
+        assert.equal(modelId, 'gpt-4o-mini')
+        assert.match(recentOutput, /Approve changes\?/)
+        return {
+          result: {
+            category: 'approval',
+            summary: 'Approval needed',
+            confidence: 'high',
+            source: 'llm',
+            providerId: 'openai',
+            modelId,
+            recentOutputExcerpt: recentOutput
+          },
+          inputTokens: 10,
+          outputTokens: 5
+        }
+      }
+    }
+  }
+  const settings = createSettingsManager()
+  settings.state.consentEnabled = true
+  settings.state.selectedProvider = 'groq'
+  settings.state.fallbackOrder = ['groq', 'openai', 'anthropic', 'gemini']
+  settings.state.executionLanes = [
+    createDirectHttpExecutionLane('openai', true, 0),
+    createDirectHttpExecutionLane('groq', true, 1),
+    createDirectHttpExecutionLane('gemini', true, 2),
+    createDirectHttpExecutionLane('anthropic', false, 3)
+  ]
+  const manager = new LlmManager(settings as never)
+
+  const result = await manager.classifyCandidate(createInput())
+
+  assert.equal(result.providerId, 'openai')
+  assert.equal(groqCalls, 0)
+  assert.equal(settings.state.usage.openai.requestCount, 1)
+  assert.equal(settings.state.usage.groq.requestCount, 0)
+})
+
+test('moveLane swaps a direct_http lane down by one position and updates fallback order shims', () => {
+  currentCredentialStore = createCredentialStore()
+  currentAdapters = {}
+  const settings = createSettingsManager()
+  const manager = new LlmManager(settings as never)
+
+  manager.moveLane('groq/direct_http', 1)
+
+  assert.deepEqual(
+    settings.state.executionLanes
+      .filter((lane) => lane.transport === 'direct_http')
+      .map((lane) => lane.providerId),
+    ['gemini', 'anthropic', 'groq', 'openai']
+  )
+  assert.equal(settings.state.selectedProvider, 'gemini')
+  assert.deepEqual(settings.state.fallbackOrder, ['gemini', 'anthropic', 'groq', 'openai'])
+})
+
+test('setLaneEnabled updates the direct_http lane without disabling the bridge lane', () => {
+  currentCredentialStore = createCredentialStore()
+  currentAdapters = {}
+  const settings = createSettingsManager()
+  settings.state.executionLanes = [
+    createDirectHttpExecutionLane('gemini', true, 0),
+    createOfficialClientBridgeLane({ priority: 1, enabled: true }),
+    createDirectHttpExecutionLane('openai', true, 2),
+    createDirectHttpExecutionLane('groq', true, 3),
+    createDirectHttpExecutionLane('anthropic', false, 4)
+  ]
+  const manager = new LlmManager(settings as never)
+
+  manager.setLaneEnabled('openai/direct_http', false)
+
+  const bridgeLane = settings.state.executionLanes.find(
+    (lane) => lane.laneId === OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
+  )
+  const directHttpLane = settings.state.executionLanes.find((lane) => lane.laneId === 'openai/direct_http')
+
+  assert.equal(settings.state.providers.openai.enabled, false)
+  assert.equal(directHttpLane?.enabled, false)
+  assert.equal(bridgeLane?.enabled, true)
+  assert.deepEqual(bridgeLane?.validationState, {
+    status: 'connected',
+    detail: 'Authenticated via Codex CLI',
+    lastValidatedAt: '2026-04-16T05:34:14.000Z'
+  })
+})
+
+test('setLaneEnabled rejects an unknown lane id with the contract error message', () => {
+  currentCredentialStore = createCredentialStore()
+  currentAdapters = {}
+  const settings = createSettingsManager()
+  const manager = new LlmManager(settings as never)
+
+  assert.throws(() => {
+    manager.setLaneEnabled('missing/direct_http', true)
+  }, new Error(ERR_UNKNOWN_LANE_ID))
+})
+
+test('setLaneEnabled rejects non-direct_http lanes with the contract error message', () => {
+  currentCredentialStore = createCredentialStore()
+  currentAdapters = {}
+  const settings = createSettingsManager()
+  settings.state.executionLanes = [
+    createOfficialClientBridgeLane({ priority: 0 }),
+    createDirectHttpExecutionLane('openai', true, 1)
+  ]
+  const manager = new LlmManager(settings as never)
+
+  assert.throws(() => {
+    manager.setLaneEnabled(OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID, false)
+  }, new Error(ERR_NON_DIRECT_HTTP_LANE))
+})
+
+test('moveLane rejects non-direct_http lanes with the contract error message', () => {
+  currentCredentialStore = createCredentialStore()
+  currentAdapters = {}
+  const settings = createSettingsManager()
+  settings.state.executionLanes = [
+    createOfficialClientBridgeLane({ priority: 0 }),
+    createDirectHttpExecutionLane('openai', true, 1)
+  ]
+  const manager = new LlmManager(settings as never)
+
+  assert.throws(() => {
+    manager.moveLane(OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID, 1)
+  }, new Error(ERR_NON_DIRECT_HTTP_LANE))
 })

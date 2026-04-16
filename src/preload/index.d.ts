@@ -4,7 +4,9 @@ import type {
   SessionMonitoringClearEvent,
   SessionMonitoringTransitionEvent,
   SessionMonitoringUpsertEvent,
+  LlmExecutionLane,
   LlmApprovalAnalysisPreview,
+  LlmLaneMoveDelta,
   LlmModelSummary,
   LlmProviderId,
   LlmRuntimeInput,
@@ -36,14 +38,23 @@ export interface SettingsAPI {
 export interface LlmAPI {
   getSettingsState: () => Promise<LlmSettingsState>
   getStorageStatus: () => Promise<LlmStorageStatus>
-  setProviderEnabled: (providerId: LlmProviderId, enabled: boolean) => Promise<void>
-  setSelectedProvider: (providerId: LlmProviderId) => Promise<void>
   setSelectedModel: (providerId: LlmProviderId, modelId: string) => Promise<void>
   setConsent: (enabled: boolean) => Promise<void>
-  setFallbackOrder: (order: LlmProviderId[]) => Promise<void>
+  setLaneEnabled: (laneId: string, enabled: boolean) => Promise<void>
+  moveLane: (laneId: string, delta: LlmLaneMoveDelta) => Promise<void>
   setApiKey: (providerId: LlmProviderId, apiKey: string) => Promise<void>
   clearApiKey: (providerId: LlmProviderId) => Promise<void>
   listModels: (providerId: LlmProviderId) => Promise<LlmModelSummary[]>
+  connect: (laneId: string) => Promise<{
+    status: 'pending-user-action'
+    terminalId: string
+    guidance: string
+    lane: LlmExecutionLane
+  }>
+  disconnect: (laneId: string) => Promise<LlmExecutionLane>
+  validate: (laneId: string) => Promise<LlmExecutionLane>
+  refreshState: (laneId: string) => Promise<LlmExecutionLane>
+  'refresh-state': (laneId: string) => Promise<LlmExecutionLane>
   classifyPreview: (input: LlmRuntimeInput) => Promise<LlmApprovalAnalysisPreview>
 }
 

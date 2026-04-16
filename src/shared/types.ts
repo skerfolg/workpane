@@ -46,6 +46,54 @@ export interface LlmProviderSettings {
   lastModelRefreshAt: string | null
 }
 
+export type LlmExecutionTransport = 'direct_http' | 'official_client_bridge'
+
+export type LlmCredentialStyle = 'api_key' | 'provider_session'
+
+export type LlmValidationStatus =
+  | 'unknown'
+  | 'connected'
+  | 'missing_client'
+  | 'unauthenticated'
+  | 'unsupported_platform'
+  | 'error'
+
+export interface LlmValidationState {
+  status: LlmValidationStatus
+  detail: string | null
+  lastValidatedAt: string | null
+}
+
+export interface LlmExecutionLane {
+  laneId: string
+  providerId: LlmProviderId
+  transport: LlmExecutionTransport
+  credentialStyle: LlmCredentialStyle
+  enabled: boolean
+  priority: number
+  validationState: LlmValidationState
+}
+
+export const OPENAI_DIRECT_HTTP_LANE_ID = 'openai/direct_http'
+export const OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID = 'openai/official_client_bridge'
+export type LlmLaneMoveDelta = -1 | 1
+export const ERR_UNKNOWN_LANE_ID = 'ERR_UNKNOWN_LANE_ID: Unknown execution lane.'
+export const ERR_NON_DIRECT_HTTP_LANE = 'ERR_NON_DIRECT_HTTP_LANE: Lane control is supported only for direct_http lanes.'
+
+export interface LlmLaneConnectResult {
+  laneId: string
+  status: 'pending-user-action'
+  terminalId: string
+  detail: string | null
+}
+
+export interface LlmProviderCapability {
+  allowedLaneKinds: LlmExecutionTransport[]
+  allowedCredentialStyles: LlmCredentialStyle[]
+  forbiddenAuthModes: string[]
+  blockedStates: LlmValidationStatus[]
+}
+
 export interface LlmUsageSnapshot {
   providerId: LlmProviderId
   requestCount: number
@@ -57,10 +105,196 @@ export interface LlmUsageSnapshot {
 
 export interface LlmSettingsState {
   consentEnabled: boolean
+  executionLanes: LlmExecutionLane[]
   selectedProvider: LlmProviderId
   fallbackOrder: LlmProviderId[]
   providers: Record<LlmProviderId, LlmProviderSettings>
   usage: Record<LlmProviderId, LlmUsageSnapshot>
+}
+
+export function createLlmValidationState(
+  status: LlmValidationStatus = 'unknown',
+  detail: string | null = null,
+  lastValidatedAt: string | null = null
+): LlmValidationState {
+  return {
+    status,
+    detail,
+    lastValidatedAt
+  }
+}
+
+export function buildExecutionLaneId(
+  providerId: LlmProviderId,
+  transport: LlmExecutionTransport
+): string {
+  return `${providerId}/${transport}`
+}
+
+export function createDirectHttpExecutionLane(
+  providerId: LlmProviderId,
+  enabled: boolean,
+  priority: number
+): LlmExecutionLane {
+  return {
+    laneId: buildExecutionLaneId(providerId, 'direct_http'),
+    providerId,
+    transport: 'direct_http',
+    credentialStyle: 'api_key',
+    enabled,
+    priority,
+    validationState: createLlmValidationState()
+  }
+}
+
+export function createOfficialClientExecutionLane(
+  providerId: LlmProviderId,
+  enabled: boolean,
+  priority: number
+): LlmExecutionLane {
+  return {
+    laneId: buildExecutionLaneId(providerId, 'official_client_bridge'),
+    providerId,
+    transport: 'official_client_bridge',
+    credentialStyle: 'provider_session',
+    enabled,
+    priority,
+    validationState: createLlmValidationState()
+  }
+}
+
+export function isDirectHttpExecutionLane(
+  lane: Pick<LlmExecutionLane, 'transport'>
+): boolean {
+  return lane.transport === 'direct_http'
+}
+
+export function isOpenAiOfficialClientBridgeLane(
+  lane: Pick<LlmExecutionLane, 'laneId' | 'providerId' | 'transport'>
+): boolean {
+  return (
+    lane.providerId === 'openai' &&
+    lane.transport === 'official_client_bridge' &&
+    lane.laneId === OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
+  )
+}
+
+export function pinOpenAiBridgeLane(
+  lanes: LlmExecutionLane[]
+): LlmExecutionLane[] {
+  const ordered = [...lanes]
+  const bridgeLane = ordered.find((lane) => isOpenAiOfficialClientBridgeLane(lane))
+  const result: LlmExecutionLane[] = []
+  let bridgeInserted = false
+
+  for (const lane of ordered) {
+    if (bridgeLane && lane.laneId === bridgeLane.laneId) {
+      continue
+    }
+
+    if (!bridgeInserted && bridgeLane && lane.laneId === OPENAI_DIRECT_HTTP_LANE_ID) {
+      result.push(bridgeLane)
+      bridgeInserted = true
+    }
+
+    result.push(lane)
+  }
+
+  if (bridgeLane && !bridgeInserted) {
+    result.push(bridgeLane)
+  }
+
+  return result.map((lane, index) => ({
+    ...lane,
+    priority: index
+  }))
+}
+
+export function buildLegacyProviderOrder(
+  selectedProvider: LlmProviderId,
+  fallbackOrder: LlmProviderId[]
+): LlmProviderId[] {
+  const ordered = [selectedProvider, ...fallbackOrder]
+  const seen = new Set<LlmProviderId>()
+  const result: LlmProviderId[] = []
+
+  for (const providerId of ordered) {
+    if (!seen.has(providerId) && isLlmProviderId(providerId)) {
+      seen.add(providerId)
+      result.push(providerId)
+    }
+  }
+
+  for (const providerId of LLM_PROVIDER_IDS) {
+    if (!seen.has(providerId)) {
+      seen.add(providerId)
+      result.push(providerId)
+    }
+  }
+
+  return result
+}
+
+export function buildDerivedProviderOrderFromLanes(
+  lanes: LlmExecutionLane[]
+): LlmProviderId[] {
+  const orderedLanes = [...lanes]
+    .filter((lane) => isDirectHttpExecutionLane(lane))
+    .sort((a, b) => a.priority - b.priority)
+  const seen = new Set<LlmProviderId>()
+  const result: LlmProviderId[] = []
+
+  for (const lane of orderedLanes) {
+    if (!seen.has(lane.providerId)) {
+      seen.add(lane.providerId)
+      result.push(lane.providerId)
+    }
+  }
+
+  for (const providerId of LLM_PROVIDER_IDS) {
+    if (!seen.has(providerId)) {
+      seen.add(providerId)
+      result.push(providerId)
+    }
+  }
+
+  return result
+}
+
+export function syncLegacyProviderShims(
+  state: LlmSettingsState
+): LlmSettingsState {
+  const providerOrder = buildDerivedProviderOrderFromLanes(state.executionLanes)
+  state.selectedProvider = providerOrder[0] ?? LLM_PROVIDER_IDS[0]
+  state.fallbackOrder = providerOrder
+  return state
+}
+
+export const LLM_PROVIDER_CAPABILITIES: Record<LlmProviderId, LlmProviderCapability> = {
+  gemini: {
+    allowedLaneKinds: ['direct_http', 'official_client_bridge'],
+    allowedCredentialStyles: ['api_key', 'provider_session'],
+    forbiddenAuthModes: ['token_scraping', 'browser_cookie_reuse'],
+    blockedStates: ['missing_client', 'unauthenticated', 'unsupported_platform', 'error']
+  },
+  groq: {
+    allowedLaneKinds: ['direct_http'],
+    allowedCredentialStyles: ['api_key'],
+    forbiddenAuthModes: ['official_client_bridge', 'token_scraping', 'browser_cookie_reuse'],
+    blockedStates: ['error']
+  },
+  anthropic: {
+    allowedLaneKinds: ['direct_http'],
+    allowedCredentialStyles: ['api_key'],
+    forbiddenAuthModes: ['official_client_bridge', 'token_scraping', 'browser_cookie_reuse', 'third_party_oauth_reuse'],
+    blockedStates: ['error']
+  },
+  openai: {
+    allowedLaneKinds: ['direct_http', 'official_client_bridge'],
+    allowedCredentialStyles: ['api_key', 'provider_session'],
+    forbiddenAuthModes: ['token_scraping', 'browser_cookie_reuse'],
+    blockedStates: ['missing_client', 'unauthenticated', 'unsupported_platform', 'error']
+  }
 }
 
 export interface LlmStorageStatus {

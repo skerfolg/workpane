@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID } from '../../src/shared/types'
 import { closeApp, launchApp, openRecentWorkspace } from './helpers/electron'
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
@@ -20,11 +21,29 @@ test.describe('LLM Live Provider Smoke', () => {
       expect(storage.available).toBe(true)
 
       await page.evaluate(async (apiKey) => {
-        await window.llm.setProviderEnabled('openai', true)
-        await window.llm.setSelectedProvider('openai')
+        await window.llm.setLaneEnabled('openai/direct_http', true)
         await window.llm.setConsent(true)
         await window.llm.setApiKey('openai', apiKey)
       }, OPENAI_API_KEY)
+
+      await expect.poll(async () => {
+        return page.evaluate(async (bridgeLaneId) => {
+          const state = await window.llm.getSettingsState()
+          const directHttpLane = state.executionLanes.find((lane) => lane.laneId === 'openai/direct_http')
+          const bridgeLane = state.executionLanes.find((lane) => lane.laneId === bridgeLaneId)
+          return {
+            directHttpEnabled: directHttpLane?.enabled ?? null,
+            bridgeEnabled: bridgeLane?.enabled ?? null,
+            directHttpTransport: directHttpLane?.transport ?? null,
+            bridgeTransport: bridgeLane?.transport ?? null
+          }
+        }, OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID)
+      }).toEqual({
+        directHttpEnabled: true,
+        bridgeEnabled: false,
+        directHttpTransport: 'direct_http',
+        bridgeTransport: 'official_client_bridge'
+      })
 
       const models = await page.evaluate(async () => {
         return window.llm.listModels('openai')
@@ -36,6 +55,19 @@ test.describe('LLM Live Provider Smoke', () => {
       await page.evaluate(async (modelId) => {
         await window.llm.setSelectedModel('openai', modelId)
       }, chosenModel)
+
+      const stateAfterModelSelection = await page.evaluate(async (bridgeLaneId) => {
+        const state = await window.llm.getSettingsState()
+        const bridgeLane = state.executionLanes.find((lane) => lane.laneId === bridgeLaneId)
+        return {
+          selectedModel: state.providers.openai.selectedModel,
+          bridgeHasPersistedModelField: bridgeLane
+            ? 'selectedModel' in (bridgeLane as Record<string, unknown>) || 'modelId' in (bridgeLane as Record<string, unknown>)
+            : false
+        }
+      }, OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID)
+      expect(stateAfterModelSelection.selectedModel).toBe(chosenModel)
+      expect(stateAfterModelSelection.bridgeHasPersistedModelField).toBe(false)
 
       const result = await page.evaluate(async () => {
         return window.llm.classifyPreview({

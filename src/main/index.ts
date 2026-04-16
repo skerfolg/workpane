@@ -18,12 +18,19 @@ import * as path from 'path'
 import { LlmManager } from './llm/manager'
 import type {
   ApprovalDetectedEvent,
+  LlmExecutionLane,
+  LlmLaneConnectResult,
+  LlmLaneMoveDelta,
   LlmProviderId,
   SessionMonitoringClearEvent,
   SessionMonitoringState,
   SessionMonitoringTransitionEvent
 } from '../shared/types'
 import { isLlmProviderId } from '../shared/types'
+
+if (process.env.NODE_ENV === 'test' && process.env.APPDATA) {
+  app.setPath('userData', join(process.env.APPDATA, 'Electron'))
+}
 
 const terminalManager = new TerminalManager()
 const browserManager = new BrowserManager()
@@ -50,6 +57,11 @@ const monitoringTransitionSequences = new Map<string, number>()
 function resetMonitoringLifecycleState(): void {
   monitoredTerminals.clear()
   monitoringTransitionSequences.clear()
+}
+
+function getBridgeCommandCwd(): string {
+  const workspace = workspaceManager.getCurrentWorkspace()
+  return workspace?.path || process.env.USERPROFILE || process.env.HOME || process.cwd()
 }
 
 function nextMonitoringTransitionSequence(terminalId: string): number {
@@ -238,13 +250,16 @@ function createWindow(): void {
   console.log(`[PERF][Main] createWindow: done ${(performance.now() - _perfStart).toFixed(1)}ms`)
 }
 
-// IPC handlers for terminal
-ipcMain.handle('terminal:create', (_event, { id, shell, cwd }: { id: string; shell?: string; cwd?: string }) => {
+function ensureTerminalCreated(id: string, shellPath?: string, cwd?: string): void {
   if (process.env.NODE_ENV === 'test') {
     return
   }
 
-  terminalManager.create(id, shell, cwd)
+  if (terminalManager.get(id)) {
+    return
+  }
+
+  terminalManager.create(id, shellPath, cwd)
   const term = terminalManager.get(id)
   if (!term) return
 
@@ -278,6 +293,11 @@ ipcMain.handle('terminal:create', (_event, { id, shell, cwd }: { id: string; she
 
   terminalManager.addDisposable(id, onDataDisposable)
   terminalManager.addDisposable(id, onExitDisposable)
+}
+
+// IPC handlers for terminal
+ipcMain.handle('terminal:create', (_event, { id, shell, cwd }: { id: string; shell?: string; cwd?: string }) => {
+  ensureTerminalCreated(id, shell, cwd)
 })
 
 ipcMain.on('terminal:write', (_event, { id, data }: { id: string; data: string }) => {
@@ -337,16 +357,6 @@ ipcMain.handle('llm:get-storage-status', () => {
   return llmManager.getStorageStatus()
 })
 
-ipcMain.handle('llm:set-provider-enabled', (_event, providerId: LlmProviderId, enabled: boolean) => {
-  if (!isLlmProviderId(providerId)) throw new Error('Invalid LLM provider id.')
-  llmManager.setProviderEnabled(providerId, enabled)
-})
-
-ipcMain.handle('llm:set-selected-provider', (_event, providerId: LlmProviderId) => {
-  if (!isLlmProviderId(providerId)) throw new Error('Invalid LLM provider id.')
-  llmManager.setSelectedProvider(providerId)
-})
-
 ipcMain.handle('llm:set-selected-model', (_event, providerId: LlmProviderId, modelId: string) => {
   if (!isLlmProviderId(providerId)) throw new Error('Invalid LLM provider id.')
   llmManager.setSelectedModel(providerId, modelId)
@@ -356,11 +366,15 @@ ipcMain.handle('llm:set-consent', (_event, enabled: boolean) => {
   llmManager.setConsentEnabled(enabled)
 })
 
-ipcMain.handle('llm:set-fallback-order', (_event, order: LlmProviderId[]) => {
-  if (!Array.isArray(order) || !order.every(isLlmProviderId)) {
-    throw new Error('Invalid LLM fallback order.')
+ipcMain.handle('llm:set-lane-enabled', (_event, laneId: string, enabled: boolean) => {
+  llmManager.setLaneEnabled(laneId, enabled)
+})
+
+ipcMain.handle('llm:move-lane', (_event, laneId: string, delta: LlmLaneMoveDelta) => {
+  if (delta !== -1 && delta !== 1) {
+    throw new Error('Invalid lane move delta.')
   }
-  llmManager.setFallbackOrder(order)
+  llmManager.moveLane(laneId, delta)
 })
 
 ipcMain.handle('llm:set-api-key', async (_event, providerId: LlmProviderId, apiKey: string) => {
@@ -376,6 +390,38 @@ ipcMain.handle('llm:clear-api-key', async (_event, providerId: LlmProviderId) =>
 ipcMain.handle('llm:list-models', async (_event, providerId: LlmProviderId) => {
   if (!isLlmProviderId(providerId)) throw new Error('Invalid LLM provider id.')
   return llmManager.listModels(providerId)
+})
+
+ipcMain.handle('llm:connect', async (_event, laneId: string): Promise<LlmLaneConnectResult & { guidance: string; lane: LlmExecutionLane }> => {
+  const result = await llmManager.connectLane(laneId, {
+    launch: async ({ command, args }) => {
+      const terminalId = `llm-bridge-openai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+      ensureTerminalCreated(terminalId, undefined, getBridgeCommandCwd())
+      terminalManager.write(terminalId, [command, ...args].join(' ') + '\r')
+      return { terminalId }
+    }
+  })
+  const lane = llmManager.getSettingsState().executionLanes.find((entry) => entry.laneId === laneId)
+  if (!lane) {
+    throw new Error(`Unknown execution lane: ${laneId}`)
+  }
+  return {
+    ...result,
+    guidance: result.detail ?? 'Complete device authentication in the existing terminal surface.',
+    lane
+  }
+})
+
+ipcMain.handle('llm:disconnect', async (_event, laneId: string) => {
+  return llmManager.disconnectLane(laneId)
+})
+
+ipcMain.handle('llm:refresh-state', async (_event, laneId: string) => {
+  return await llmManager.refreshLaneState(laneId)
+})
+
+ipcMain.handle('llm:validate', async (_event, laneId: string) => {
+  return await llmManager.validateLane(laneId)
 })
 
 ipcMain.handle('llm:classify-preview', async (_event, input) => {

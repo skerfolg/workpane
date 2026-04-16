@@ -87,14 +87,18 @@ const settingsAPI = {
 const llmAPI = {
   getSettingsState: () => ipcRenderer.invoke('llm:get-settings-state'),
   getStorageStatus: () => ipcRenderer.invoke('llm:get-storage-status'),
-  setProviderEnabled: (providerId: string, enabled: boolean) => ipcRenderer.invoke('llm:set-provider-enabled', providerId, enabled),
-  setSelectedProvider: (providerId: string) => ipcRenderer.invoke('llm:set-selected-provider', providerId),
   setSelectedModel: (providerId: string, modelId: string) => ipcRenderer.invoke('llm:set-selected-model', providerId, modelId),
   setConsent: (enabled: boolean) => ipcRenderer.invoke('llm:set-consent', enabled),
-  setFallbackOrder: (order: string[]) => ipcRenderer.invoke('llm:set-fallback-order', order),
+  setLaneEnabled: (laneId: string, enabled: boolean) => ipcRenderer.invoke('llm:set-lane-enabled', laneId, enabled),
+  moveLane: (laneId: string, delta: -1 | 1) => ipcRenderer.invoke('llm:move-lane', laneId, delta),
   setApiKey: (providerId: string, apiKey: string) => ipcRenderer.invoke('llm:set-api-key', providerId, apiKey),
   clearApiKey: (providerId: string) => ipcRenderer.invoke('llm:clear-api-key', providerId),
   listModels: (providerId: string) => ipcRenderer.invoke('llm:list-models', providerId),
+  connect: (laneId: string) => ipcRenderer.invoke('llm:connect', laneId),
+  disconnect: (laneId: string) => ipcRenderer.invoke('llm:disconnect', laneId),
+  validate: (laneId: string) => ipcRenderer.invoke('llm:validate', laneId),
+  refreshState: (laneId: string) => ipcRenderer.invoke('llm:refresh-state', laneId),
+  'refresh-state': (laneId: string) => ipcRenderer.invoke('llm:refresh-state', laneId),
   classifyPreview: (input: unknown) => ipcRenderer.invoke('llm:classify-preview', input)
 }
 
