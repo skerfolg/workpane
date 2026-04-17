@@ -1,7 +1,9 @@
 import type { LlmClassificationResult, LlmLaneConnectResult, LlmValidationState } from '../../../shared/types'
 
 export interface BridgeCommandRequest {
+  command?: string
   args: string[]
+  env?: NodeJS.ProcessEnv
   timeoutMs?: number
 }
 
@@ -20,6 +22,7 @@ export interface BridgeConnectLaunchRequest {
   laneId: string
   command: string
   args: string[]
+  env?: NodeJS.ProcessEnv
 }
 
 export interface BridgeConnectHooks {

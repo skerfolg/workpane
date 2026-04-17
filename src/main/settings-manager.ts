@@ -6,8 +6,7 @@ import {
   createDirectHttpExecutionLane,
   createOfficialClientExecutionLane,
   LLM_PROVIDER_IDS,
-  OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID,
-  pinOpenAiBridgeLane,
+  pinOfficialClientBridgeLanes,
   syncLegacyProviderShims
 } from '../shared/types'
 
@@ -72,10 +71,11 @@ function createDefaultExecutionLanes(
   const directHttpLanes = providerOrder.map((providerId, priority) =>
     createDirectHttpExecutionLane(providerId, providers[providerId].enabled, priority)
   )
-  const openAiIndex = directHttpLanes.findIndex((lane) => lane.providerId === 'openai')
-  const lanes = [...directHttpLanes]
-  lanes.splice(openAiIndex === -1 ? lanes.length : openAiIndex, 0, createOfficialClientExecutionLane('openai', false, 0))
-  return pinOpenAiBridgeLane(lanes)
+  return pinOfficialClientBridgeLanes([
+    ...directHttpLanes,
+    createOfficialClientExecutionLane('gemini', false, 0),
+    createOfficialClientExecutionLane('openai', false, 0)
+  ])
 }
 
 function normalizeValidationState(
@@ -146,7 +146,7 @@ function normalizeExecutionLanes(
   const directHttpLaneMap = new Map<LlmProviderId, Partial<LlmExecutionLane>>()
   const directHttpOrderFromRaw: LlmProviderId[] = []
   const seenDirectHttpProviders = new Set<LlmProviderId>()
-  let persistedBridgeLane: Partial<LlmExecutionLane> | undefined
+  const persistedBridgeLanes = new Map<LlmProviderId, Partial<LlmExecutionLane>>()
   for (const lane of orderedRawExecutionLanes) {
     if (lane.transport === 'direct_http' && LLM_PROVIDER_IDS.includes(lane.providerId)) {
       directHttpLaneMap.set(lane.providerId, lane)
@@ -156,11 +156,12 @@ function normalizeExecutionLanes(
       }
     }
     if (
-      lane.providerId === 'openai' &&
       lane.transport === 'official_client_bridge' &&
-      lane.laneId === OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
+      typeof lane.laneId === 'string' &&
+      (lane.providerId === 'gemini' || lane.providerId === 'openai') &&
+      lane.laneId === createOfficialClientExecutionLane(lane.providerId, false, 0).laneId
     ) {
-      persistedBridgeLane = lane
+      persistedBridgeLanes.set(lane.providerId, lane)
     }
   }
 
@@ -189,20 +190,24 @@ function normalizeExecutionLanes(
     } satisfies LlmExecutionLane
   })
 
-  const bridgeEnabled = typeof persistedBridgeLane?.enabled === 'boolean' ? persistedBridgeLane.enabled : false
-  const bridgeLane: LlmExecutionLane = {
-    laneId: createOfficialClientExecutionLane('openai', bridgeEnabled, 0).laneId,
-    providerId: 'openai',
-    transport: 'official_client_bridge',
-    credentialStyle: 'provider_session',
-    enabled: bridgeEnabled,
-    priority: 0,
-    validationState: persistedBridgeLane
-      ? normalizeValidationState(persistedBridgeLane.validationState)
-      : createLlmValidationState()
-  }
+  const bridgeProviders: LlmProviderId[] = ['gemini', 'openai']
+  const bridgeLanes: LlmExecutionLane[] = bridgeProviders.map((providerId) => {
+    const persistedBridgeLane = persistedBridgeLanes.get(providerId)
+    const bridgeEnabled = typeof persistedBridgeLane?.enabled === 'boolean' ? persistedBridgeLane.enabled : false
+    return {
+      laneId: createOfficialClientExecutionLane(providerId, bridgeEnabled, 0).laneId,
+      providerId,
+      transport: 'official_client_bridge',
+      credentialStyle: 'provider_session',
+      enabled: bridgeEnabled,
+      priority: 0,
+      validationState: persistedBridgeLane
+        ? normalizeValidationState(persistedBridgeLane.validationState)
+        : createLlmValidationState()
+    } satisfies LlmExecutionLane
+  })
 
-  return pinOpenAiBridgeLane([...directHttpLanes, bridgeLane]).map((lane) => ({
+  return pinOfficialClientBridgeLanes([...directHttpLanes, ...bridgeLanes]).map((lane) => ({
     laneId: lane.laneId,
     providerId: lane.providerId,
     transport: lane.transport,

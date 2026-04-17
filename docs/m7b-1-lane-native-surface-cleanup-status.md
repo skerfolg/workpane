@@ -48,4 +48,4 @@ Scope: execution status after `M7b.1`
 ## Follow-up
 
 - `M7b.1` closes the planned lane-native cleanup after `M7b`.
-- The next milestone candidate in the `M7` track is `M7c` for the second official-client bridge.
+- `M7c` completed the second official-client bridge and closed the currently planned `M7` execution track.

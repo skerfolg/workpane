@@ -10,7 +10,6 @@ import type {
   LlmStorageStatus,
   LlmValidationStatus
 } from '../../../../shared/types'
-import { OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID } from '../../../../shared/types'
 
 interface NotificationPattern {
   name: string
@@ -57,10 +56,33 @@ const BRIDGE_PLATFORM_COPY = 'Native Windows is the documented path. Use WSL2 on
 const BRIDGE_STATUS_LABELS: Record<LlmValidationStatus, string> = {
   unknown: 'Unknown',
   connected: 'Connected',
-  missing_client: 'Missing Codex CLI',
+  missing_client: 'Missing client',
   unauthenticated: 'Sign-in required',
   unsupported_platform: 'Unsupported platform',
   error: 'Error'
+}
+
+const BRIDGE_PROVIDER_COPY: Record<'gemini' | 'openai', {
+  label: string
+  modelLabel: string
+  connectedDetail: string
+  missingClientLabel: string
+  disconnectCopy: string
+}> = {
+  gemini: {
+    label: 'Google Gemini · official_client_bridge',
+    modelLabel: 'Managed by Gemini CLI',
+    connectedDetail: 'Gemini CLI session is ready for the official-client bridge.',
+    missingClientLabel: 'Missing Gemini CLI',
+    disconnectCopy: 'Local only. PromptManager does not run Gemini logout or clear Gemini session state.'
+  },
+  openai: {
+    label: 'OpenAI · official_client_bridge',
+    modelLabel: 'Managed by Codex CLI',
+    connectedDetail: 'Codex CLI session is ready for the official-client bridge.',
+    missingClientLabel: 'Missing Codex CLI',
+    disconnectCopy: 'Local only. PromptManager does not run `codex logout` and leaves your Codex CLI session unchanged.'
+  }
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
@@ -78,6 +100,7 @@ const BUILTIN_PATTERNS = [
 ]
 
 function getBridgeStatusDetail(
+  providerId: 'gemini' | 'openai',
   status: LlmValidationStatus,
   detail: string | null | undefined
 ): string | null {
@@ -85,12 +108,22 @@ function getBridgeStatusDetail(
     return detail
   }
   if (status === 'connected') {
-    return 'Codex CLI session is ready for the official-client bridge.'
+    return BRIDGE_PROVIDER_COPY[providerId].connectedDetail
   }
   if (status === 'unknown') {
     return 'Bridge status has not been checked yet.'
   }
   return null
+}
+
+function getBridgeStatusLabel(
+  providerId: 'gemini' | 'openai',
+  status: LlmValidationStatus
+): string {
+  if (status === 'missing_client') {
+    return BRIDGE_PROVIDER_COPY[providerId].missingClientLabel
+  }
+  return BRIDGE_STATUS_LABELS[status]
 }
 
 interface SectionProps {
@@ -125,6 +158,7 @@ export default function SettingsView(): React.JSX.Element {
   const [llmError, setLlmError] = useState('')
   const [bridgeActionBusy, setBridgeActionBusy] = useState<string | null>(null)
   const [bridgeConnectInfo, setBridgeConnectInfo] = useState<{
+    laneId: string
     terminalId: string
     guidance: string
   } | null>(null)
@@ -238,15 +272,11 @@ export default function SettingsView(): React.JSX.Element {
     .sort((a, b) => a.priority - b.priority)
   const directHttpLanes = [...orderedExecutionLanes]
     .filter((lane) => lane.transport === 'direct_http')
-  const openAiBridgeLane =
-    orderedExecutionLanes.find((lane) => lane.laneId === OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID) ?? null
-  const bridgeStatus = openAiBridgeLane?.validationState.status ?? 'unknown'
-  const bridgeStatusDetail = getBridgeStatusDetail(
-    bridgeStatus,
-    openAiBridgeLane?.validationState.detail
-  )
-  const bridgeStatusClass = bridgeStatus.replace(/_/g, '-')
-  const bridgeConnectBlocked = bridgeStatus === 'missing_client' || bridgeStatus === 'unsupported_platform'
+  const officialClientBridgeLanes = orderedExecutionLanes
+    .filter((lane): lane is LlmExecutionLane & { providerId: 'gemini' | 'openai' } =>
+      lane.transport === 'official_client_bridge' &&
+      (lane.providerId === 'gemini' || lane.providerId === 'openai')
+    )
 
   const handleRefreshModels = useCallback(async (providerId: LlmProviderId) => {
     try {
@@ -296,47 +326,50 @@ export default function SettingsView(): React.JSX.Element {
     }
   }, [refreshLlmState])
 
-  const handleBridgeAction = useCallback(async (action: 'connect' | 'disconnect' | 'validate' | 'refresh-state') => {
-    const laneId = openAiBridgeLane?.laneId ?? OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
+  const handleBridgeAction = useCallback(async (
+    lane: LlmExecutionLane & { providerId: 'gemini' | 'openai' },
+    action: 'connect' | 'disconnect' | 'validate' | 'refresh-state'
+  ) => {
     try {
-      setBridgeActionBusy(action)
+      setBridgeActionBusy(`${lane.laneId}:${action}`)
       setLlmError('')
       if (action !== 'connect') {
-        setBridgeConnectInfo(null)
+        setBridgeConnectInfo((current) => current?.laneId === lane.laneId ? null : current)
       }
       switch (action) {
         case 'connect': {
-          const result = await window.llm.connect(laneId)
+          const result = await window.llm.connect(lane.laneId)
           setBridgeConnectInfo({
+            laneId: lane.laneId,
             terminalId: result.terminalId,
             guidance: result.guidance
           })
           break
         }
         case 'disconnect':
-          await window.llm.disconnect(laneId)
-          setBridgeConnectInfo(null)
+          await window.llm.disconnect(lane.laneId)
+          setBridgeConnectInfo((current) => current?.laneId === lane.laneId ? null : current)
           break
         case 'validate':
-          await window.llm.validate(laneId)
-          setBridgeConnectInfo(null)
+          await window.llm.validate(lane.laneId)
+          setBridgeConnectInfo((current) => current?.laneId === lane.laneId ? null : current)
           break
         case 'refresh-state':
-          await window.llm.refreshState(laneId)
-          setBridgeConnectInfo(null)
+          await window.llm.refreshState(lane.laneId)
+          setBridgeConnectInfo((current) => current?.laneId === lane.laneId ? null : current)
           break
       }
       await refreshLlmState()
     } catch (error) {
       console.error(`Failed to ${action} bridge lane:`, error)
       if (action !== 'connect') {
-        setBridgeConnectInfo(null)
+        setBridgeConnectInfo((current) => current?.laneId === lane.laneId ? null : current)
       }
-      setLlmError(`Failed to ${action} OpenAI official-client bridge.`)
+      setLlmError(`Failed to ${action} ${PROVIDER_LABELS[lane.providerId]} official-client bridge.`)
     } finally {
       setBridgeActionBusy(null)
     }
-  }, [openAiBridgeLane?.laneId, refreshLlmState])
+  }, [refreshLlmState])
 
   return (
     <div className="settings-view">
@@ -591,8 +624,10 @@ export default function SettingsView(): React.JSX.Element {
                           </button>
                         </>
                       ) : (
-                        <span className={`settings-lane-state settings-lane-state--${bridgeStatusClass}`}>
-                          {BRIDGE_STATUS_LABELS[lane.validationState.status]}
+                        <span className={`settings-lane-state settings-lane-state--${lane.validationState.status.replace(/_/g, '-')}`}>
+                          {lane.providerId === 'gemini' || lane.providerId === 'openai'
+                            ? getBridgeStatusLabel(lane.providerId, lane.validationState.status)
+                            : BRIDGE_STATUS_LABELS[lane.validationState.status]}
                         </span>
                       )}
                     </div>
@@ -602,83 +637,95 @@ export default function SettingsView(): React.JSX.Element {
               </div>
             </div>
 
-            {openAiBridgeLane ? (
-              <div className="settings-row--column">
-                <span className="settings-row__label">OpenAI · official_client_bridge</span>
-                <div className="settings-pattern-list">
-                  <div className="settings-pattern-row">
-                    <span className="settings-pattern-row__name">Status</span>
-                    <div className="settings-lane-detail">
-                      <span className={`settings-lane-state settings-lane-state--${bridgeStatusClass}`}>
-                        {BRIDGE_STATUS_LABELS[bridgeStatus]}
-                      </span>
-                      {bridgeStatusDetail ? (
-                        <span className="settings-pattern-row__pattern">{bridgeStatusDetail}</span>
-                      ) : null}
+            {officialClientBridgeLanes.map((lane) => {
+              const bridgeStatus = lane.validationState.status
+              const bridgeStatusClass = bridgeStatus.replace(/_/g, '-')
+              const bridgeStatusDetail = getBridgeStatusDetail(
+                lane.providerId,
+                bridgeStatus,
+                lane.validationState.detail
+              )
+              const bridgeConnectBlocked = bridgeStatus === 'missing_client' || bridgeStatus === 'unsupported_platform'
+              const bridgeCopy = BRIDGE_PROVIDER_COPY[lane.providerId]
+              const bridgePendingInfo = bridgeConnectInfo?.laneId === lane.laneId ? bridgeConnectInfo : null
+              return (
+                <div key={lane.laneId} className="settings-row--column">
+                  <span className="settings-row__label">{bridgeCopy.label}</span>
+                  <div className="settings-pattern-list">
+                    <div className="settings-pattern-row">
+                      <span className="settings-pattern-row__name">Status</span>
+                      <div className="settings-lane-detail">
+                        <span className={`settings-lane-state settings-lane-state--${bridgeStatusClass}`}>
+                          {getBridgeStatusLabel(lane.providerId, bridgeStatus)}
+                        </span>
+                        {bridgeStatusDetail ? (
+                          <span className="settings-pattern-row__pattern">{bridgeStatusDetail}</span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                  <div className="settings-pattern-row settings-pattern-row--builtin">
-                    <span className="settings-pattern-row__name">Model</span>
-                    <span className="settings-pattern-row__pattern">Managed by Codex CLI</span>
-                  </div>
-                  <div className="settings-pattern-row settings-pattern-row--builtin">
-                    <span className="settings-pattern-row__name">Platform</span>
-                    <span className="settings-pattern-row__pattern">{BRIDGE_PLATFORM_COPY}</span>
-                  </div>
-                  {openAiBridgeLane.validationState.lastValidatedAt ? (
                     <div className="settings-pattern-row settings-pattern-row--builtin">
-                      <span className="settings-pattern-row__name">Last checked</span>
-                      <span className="settings-pattern-row__pattern">{openAiBridgeLane.validationState.lastValidatedAt}</span>
+                      <span className="settings-pattern-row__name">Model</span>
+                      <span className="settings-pattern-row__pattern">{bridgeCopy.modelLabel}</span>
                     </div>
-                  ) : null}
-                  {bridgeConnectInfo && bridgeStatus === 'unknown' ? (
                     <div className="settings-pattern-row settings-pattern-row--builtin">
-                      <span className="settings-pattern-row__name">Connect</span>
-                      <span className="settings-pattern-row__pattern">
-                        Pending user action in terminal {bridgeConnectInfo.terminalId}. {bridgeConnectInfo.guidance}
-                      </span>
+                      <span className="settings-pattern-row__name">Platform</span>
+                      <span className="settings-pattern-row__pattern">{BRIDGE_PLATFORM_COPY}</span>
                     </div>
-                  ) : null}
-                  <div className="settings-pattern-row">
-                    <span className="settings-pattern-row__name">Actions</span>
-                    <div className="settings-row__control settings-row__control--wrap">
-                      <button
-                        className="settings-btn settings-btn--secondary settings-btn--small"
-                        disabled={bridgeActionBusy !== null || bridgeConnectBlocked}
-                        onClick={() => void handleBridgeAction('connect')}
-                      >
-                        Connect
-                      </button>
-                      <button
-                        className="settings-btn settings-btn--secondary settings-btn--small"
-                        disabled={bridgeActionBusy !== null}
-                        onClick={() => void handleBridgeAction('refresh-state')}
-                      >
-                        Refresh State
-                      </button>
-                      <button
-                        className="settings-btn settings-btn--secondary settings-btn--small"
-                        disabled={bridgeActionBusy !== null}
-                        onClick={() => void handleBridgeAction('validate')}
-                      >
-                        Validate
-                      </button>
-                      <button
-                        className="settings-btn settings-btn--secondary settings-btn--small"
-                        disabled={bridgeActionBusy !== null}
-                        onClick={() => void handleBridgeAction('disconnect')}
-                      >
-                        Disconnect (local only)
-                      </button>
+                    {lane.validationState.lastValidatedAt ? (
+                      <div className="settings-pattern-row settings-pattern-row--builtin">
+                        <span className="settings-pattern-row__name">Last checked</span>
+                        <span className="settings-pattern-row__pattern">{lane.validationState.lastValidatedAt}</span>
+                      </div>
+                    ) : null}
+                    {bridgePendingInfo ? (
+                      <div className="settings-pattern-row settings-pattern-row--builtin">
+                        <span className="settings-pattern-row__name">Connect</span>
+                        <span className="settings-pattern-row__pattern">
+                          Pending user action in terminal {bridgePendingInfo.terminalId}. {bridgePendingInfo.guidance}
+                        </span>
+                      </div>
+                    ) : null}
+                    <div className="settings-pattern-row">
+                      <span className="settings-pattern-row__name">Actions</span>
+                      <div className="settings-row__control settings-row__control--wrap">
+                        <button
+                          className="settings-btn settings-btn--secondary settings-btn--small"
+                          disabled={bridgeActionBusy !== null || bridgeConnectBlocked}
+                          onClick={() => void handleBridgeAction(lane, 'connect')}
+                        >
+                          Connect
+                        </button>
+                        <button
+                          className="settings-btn settings-btn--secondary settings-btn--small"
+                          disabled={bridgeActionBusy !== null}
+                          onClick={() => void handleBridgeAction(lane, 'refresh-state')}
+                        >
+                          Refresh State
+                        </button>
+                        <button
+                          className="settings-btn settings-btn--secondary settings-btn--small"
+                          disabled={bridgeActionBusy !== null}
+                          onClick={() => void handleBridgeAction(lane, 'validate')}
+                        >
+                          Validate
+                        </button>
+                        <button
+                          className="settings-btn settings-btn--secondary settings-btn--small"
+                          disabled={bridgeActionBusy !== null}
+                          onClick={() => void handleBridgeAction(lane, 'disconnect')}
+                        >
+                          Disconnect (local only)
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="settings-pattern-row settings-pattern-row--builtin">
-                    <span className="settings-pattern-row__name">Disconnect</span>
-                    <span className="settings-pattern-row__pattern">Local only. PromptManager does not run `codex logout` and leaves your Codex CLI session unchanged.</span>
+                    <div className="settings-pattern-row settings-pattern-row--builtin">
+                      <span className="settings-pattern-row__name">Disconnect</span>
+                      <span className="settings-pattern-row__pattern">{bridgeCopy.disconnectCopy}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : null}
+              )
+            })}
 
             {directHttpLanes.map((lane) => {
               const providerId = lane.providerId

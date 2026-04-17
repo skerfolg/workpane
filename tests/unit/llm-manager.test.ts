@@ -15,8 +15,10 @@ import {
   createOfficialClientExecutionLane,
   ERR_NON_DIRECT_HTTP_LANE,
   ERR_UNKNOWN_LANE_ID,
+  GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID,
   OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
 } from '../../src/shared/types'
+import type { BridgeClassificationResult, OfficialClientBridge } from '../../src/main/llm/client-bridges/client-bridge-types'
 
 type SettingsLike = {
   state: LlmSettingsState
@@ -118,10 +120,13 @@ function createSettingsState(): LlmSettingsState {
 }
 
 function createOfficialClientBridgeLane(
-  overrides: Partial<LlmExecutionLane> = {}
+  providerOrOverrides: 'gemini' | 'openai' | Partial<LlmExecutionLane> = 'openai',
+  maybeOverrides: Partial<LlmExecutionLane> = {}
 ): LlmExecutionLane {
+  const providerId = typeof providerOrOverrides === 'string' ? providerOrOverrides : 'openai'
+  const overrides = typeof providerOrOverrides === 'string' ? maybeOverrides : providerOrOverrides
   return {
-    ...createOfficialClientExecutionLane('openai', true, 0),
+    ...createOfficialClientExecutionLane(providerId, true, 0),
     validationState: createLlmValidationState('connected', 'Authenticated via Codex CLI', '2026-04-16T05:34:14.000Z'),
     ...overrides
   }
@@ -221,6 +226,62 @@ providerAdapterModule.getProviderAdapter = ((providerId: LlmProviderId) => {
 }) as typeof providerAdapterModule.getProviderAdapter
 
 const { LlmManager } = require('../../src/main/llm/manager') as typeof import('../../src/main/llm/manager')
+
+function createOfficialClientBridgeStub(overrides: {
+  connect?: (laneId: string) => Promise<{ laneId: string; status: 'pending-user-action'; terminalId: string; detail: string | null }>
+  refreshState?: () => Promise<{ validationState: LlmExecutionLane['validationState'] }>
+  validate?: () => Promise<{ validationState: LlmExecutionLane['validationState'] }>
+  classifyCause?: (recentOutput: string) => Promise<BridgeClassificationResult>
+} = {}): OfficialClientBridge {
+  return {
+    async connect(laneId: string) {
+      if (overrides.connect) {
+        return await overrides.connect(laneId)
+      }
+      return {
+        laneId,
+        status: 'pending-user-action' as const,
+        terminalId: `${laneId}-terminal`,
+        detail: 'bridge connect'
+      }
+    },
+    async refreshState() {
+      if (overrides.refreshState) {
+        return await overrides.refreshState()
+      }
+      return {
+        validationState: createLlmValidationState('connected', 'bridge connected', '2026-04-17T00:10:00.000Z')
+      }
+    },
+    async validate() {
+      if (overrides.validate) {
+        return await overrides.validate()
+      }
+      return {
+        validationState: createLlmValidationState('connected', 'bridge connected', '2026-04-17T00:10:00.000Z')
+      }
+    },
+    async classifyCause(recentOutput: string) {
+      if (overrides.classifyCause) {
+        return await overrides.classifyCause(recentOutput)
+      }
+      return {
+        result: {
+          category: 'approval' as const,
+          summary: 'Bridge approval needed',
+          confidence: 'high' as const,
+          source: 'llm' as const,
+          providerId: 'openai' as const,
+          modelId: null,
+          recentOutputExcerpt: recentOutput
+        },
+        inputTokens: 1,
+        outputTokens: 1,
+        validationState: createLlmValidationState('connected', 'bridge connected', '2026-04-17T00:10:00.000Z')
+      }
+    }
+  }
+}
 
 test.after(() => {
   providerAdapterModule.getProviderAdapter = originalGetProviderAdapter
@@ -548,4 +609,137 @@ test('moveLane rejects non-direct_http lanes with the contract error message', (
   assert.throws(() => {
     manager.moveLane(OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID, 1)
   }, new Error(ERR_NON_DIRECT_HTTP_LANE))
+})
+
+test('classifyCandidate routes enabled Gemini official-client bridge traffic before gemini direct_http', async () => {
+  currentCredentialStore = createCredentialStore({ gemini: 'gemini-secret' })
+  let directHttpCalls = 0
+  currentAdapters = {
+    gemini: {
+      async listModels() {
+        throw new Error('not used in gemini bridge classify test')
+      },
+      async classifyCause() {
+        directHttpCalls += 1
+        throw new Error('direct-http should not run when bridge succeeds')
+      }
+    }
+  }
+  const settings = createSettingsManager()
+  settings.state.consentEnabled = true
+  settings.state.executionLanes = [
+    createOfficialClientBridgeLane('gemini', {
+      laneId: GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID,
+      providerId: 'gemini',
+      priority: 0,
+      validationState: createLlmValidationState('connected', 'Authenticated via Gemini CLI', '2026-04-17T00:10:00.000Z')
+    }),
+    createDirectHttpExecutionLane('gemini', true, 1),
+    createDirectHttpExecutionLane('openai', false, 2),
+    createDirectHttpExecutionLane('groq', false, 3),
+    createDirectHttpExecutionLane('anthropic', false, 4)
+  ]
+  const manager = new LlmManager(settings as never, {
+    officialClientBridges: {
+      [GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID]: createOfficialClientBridgeStub({
+        async classifyCause(recentOutput) {
+          return {
+            result: {
+              category: 'approval',
+              summary: 'Gemini bridge approval needed',
+              confidence: 'high',
+              source: 'llm',
+              providerId: 'gemini',
+              modelId: null,
+              recentOutputExcerpt: recentOutput
+            },
+            inputTokens: 14,
+            outputTokens: 6,
+            validationState: createLlmValidationState('connected', 'Executed via Gemini CLI official-client bridge.', '2026-04-17T00:11:00.000Z')
+          }
+        }
+      })
+    }
+  })
+
+  const result = await manager.classifyCandidate(createInput())
+
+  assert.equal(result.providerId, 'gemini')
+  assert.equal(result.summary, 'Gemini bridge approval needed')
+  assert.equal(directHttpCalls, 0)
+  assert.equal(settings.state.usage.gemini.requestCount, 1)
+  assert.equal(settings.state.usage.gemini.inputTokens, 14)
+  assert.equal(settings.state.usage.gemini.outputTokens, 6)
+  const bridgeLane = settings.state.executionLanes.find((lane) => lane.laneId === GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID)
+  assert.equal(bridgeLane?.validationState.status, 'connected')
+})
+
+test('classifyCandidate falls back to gemini direct_http when the Gemini official-client bridge fails', async () => {
+  currentCredentialStore = createCredentialStore({ gemini: 'gemini-secret' })
+  let directHttpCalls = 0
+  currentAdapters = {
+    gemini: {
+      async listModels() {
+        throw new Error('not used in gemini bridge fallback test')
+      },
+      async classifyCause(apiKey, modelId, recentOutput) {
+        directHttpCalls += 1
+        assert.equal(apiKey, 'gemini-secret')
+        assert.equal(modelId, 'gemini-2.5-flash')
+        assert.match(recentOutput, /Approve changes\?/)
+        return {
+          result: {
+            category: 'approval',
+            summary: 'Gemini direct-http fallback',
+            confidence: 'medium',
+            source: 'llm',
+            providerId: 'gemini',
+            modelId,
+            recentOutputExcerpt: recentOutput
+          },
+          inputTokens: 8,
+          outputTokens: 3
+        }
+      }
+    }
+  }
+  const settings = createSettingsManager()
+  settings.state.consentEnabled = true
+  settings.state.executionLanes = [
+    createOfficialClientBridgeLane('gemini', {
+      laneId: GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID,
+      providerId: 'gemini',
+      priority: 0,
+      validationState: createLlmValidationState('connected', 'Authenticated via Gemini CLI', '2026-04-17T00:10:00.000Z')
+    }),
+    createDirectHttpExecutionLane('gemini', true, 1),
+    createDirectHttpExecutionLane('openai', false, 2),
+    createDirectHttpExecutionLane('groq', false, 3),
+    createDirectHttpExecutionLane('anthropic', false, 4)
+  ]
+  const manager = new LlmManager(settings as never, {
+    officialClientBridges: {
+      [GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID]: createOfficialClientBridgeStub({
+        async classifyCause() {
+          throw Object.assign(new Error('Gemini bridge unavailable'), {
+            validationState: createLlmValidationState('error', 'Gemini bridge unavailable', '2026-04-17T00:12:00.000Z')
+          })
+        }
+      })
+    }
+  })
+
+  const result = await manager.classifyCandidate(createInput())
+
+  assert.equal(result.providerId, 'gemini')
+  assert.equal(result.modelId, 'gemini-2.5-flash')
+  assert.equal(result.summary, 'Gemini direct-http fallback')
+  assert.equal(directHttpCalls, 1)
+  assert.equal(settings.state.usage.gemini.requestCount, 1)
+  const bridgeLane = settings.state.executionLanes.find((lane) => lane.laneId === GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID)
+  assert.deepEqual(bridgeLane?.validationState, {
+    status: 'error',
+    detail: 'Gemini bridge unavailable',
+    lastValidatedAt: '2026-04-17T00:12:00.000Z'
+  })
 })

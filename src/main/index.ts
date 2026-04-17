@@ -250,7 +250,7 @@ function createWindow(): void {
   console.log(`[PERF][Main] createWindow: done ${(performance.now() - _perfStart).toFixed(1)}ms`)
 }
 
-function ensureTerminalCreated(id: string, shellPath?: string, cwd?: string): void {
+function ensureTerminalCreated(id: string, shellPath?: string, cwd?: string, env?: NodeJS.ProcessEnv): void {
   if (process.env.NODE_ENV === 'test') {
     return
   }
@@ -259,7 +259,7 @@ function ensureTerminalCreated(id: string, shellPath?: string, cwd?: string): vo
     return
   }
 
-  terminalManager.create(id, shellPath, cwd)
+  terminalManager.create(id, shellPath, cwd, env)
   const term = terminalManager.get(id)
   if (!term) return
 
@@ -394,9 +394,10 @@ ipcMain.handle('llm:list-models', async (_event, providerId: LlmProviderId) => {
 
 ipcMain.handle('llm:connect', async (_event, laneId: string): Promise<LlmLaneConnectResult & { guidance: string; lane: LlmExecutionLane }> => {
   const result = await llmManager.connectLane(laneId, {
-    launch: async ({ command, args }) => {
-      const terminalId = `llm-bridge-openai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-      ensureTerminalCreated(terminalId, undefined, getBridgeCommandCwd())
+    launch: async ({ laneId: connectLaneId, command, args, env }) => {
+      const laneToken = connectLaneId.replace(/[^a-z0-9]+/gi, '-').toLowerCase()
+      const terminalId = `llm-bridge-${laneToken}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+      ensureTerminalCreated(terminalId, undefined, getBridgeCommandCwd(), env)
       terminalManager.write(terminalId, [command, ...args].join(' ') + '\r')
       return { terminalId }
     }
@@ -407,7 +408,7 @@ ipcMain.handle('llm:connect', async (_event, laneId: string): Promise<LlmLaneCon
   }
   return {
     ...result,
-    guidance: result.detail ?? 'Complete device authentication in the existing terminal surface.',
+    guidance: result.detail ?? 'Complete authentication in the dedicated terminal surface.',
     lane
   }
 })

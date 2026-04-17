@@ -1,0 +1,9 @@
+{
+  "response": "{\"category\":\"approval\",\"summary\":\"Approval needed\",\"confidence\":\"high\"}",
+  "stats": {
+    "session": {
+      "durationMs": 1200
+    }
+  },
+  "error": null
+}

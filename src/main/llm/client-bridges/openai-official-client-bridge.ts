@@ -1,23 +1,21 @@
-import { spawn } from 'node:child_process'
 import type { LlmCauseCategory, LlmClassificationResult, LlmLaneConnectResult, LlmValidationState } from '../../../shared/types'
-import { createLlmValidationState, OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID } from '../../../shared/types'
+import { OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID } from '../../../shared/types'
 import type {
   BridgeClassificationResult,
-  BridgeCommandRequest,
-  BridgeCommandResult,
   BridgeCommandRunner,
   BridgeConnectHooks,
   BridgeStateRefreshResult,
   BridgeValidationResult,
   OfficialClientBridge
 } from './client-bridge-types'
-
-const DEFAULT_TIMEOUT_MS = 45_000
-const SUPPORTED_PLATFORMS = new Set(['win32', 'darwin', 'linux'])
-
-class MissingClientError extends Error {}
-class UnsupportedPlatformError extends Error {}
-class TimedOutError extends Error {}
+import {
+  buildValidationState,
+  DEFAULT_TIMEOUT_MS,
+  DefaultBridgeCommandRunner,
+  mapBridgeError,
+  SUPPORTED_PLATFORMS,
+  UnsupportedPlatformError
+} from './bridge-command-runner'
 
 function normalizeCategory(value: string): LlmCauseCategory {
   if (value === 'approval' || value === 'input-needed' || value === 'error') {
@@ -44,13 +42,6 @@ function buildClassificationPrompt(recentOutput: string): string {
     '',
     recentOutput
   ].join('\n')
-}
-
-function buildValidationState(
-  status: LlmValidationState['status'],
-  detail: string | null
-): LlmValidationState {
-  return createLlmValidationState(status, detail, new Date().toISOString())
 }
 
 function extractEventText(value: unknown): string | null {
@@ -139,57 +130,6 @@ function getCodexExecutable(): string {
   return process.platform === 'win32' ? 'codex.cmd' : 'codex'
 }
 
-class DefaultBridgeCommandRunner implements BridgeCommandRunner {
-  async run(request: BridgeCommandRequest): Promise<BridgeCommandResult> {
-    const command = getCodexExecutable()
-    return await new Promise<BridgeCommandResult>((resolve, reject) => {
-      const child = spawn(command, request.args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-        env: process.env as NodeJS.ProcessEnv
-      })
-
-      const stdoutChunks: Buffer[] = []
-      const stderrChunks: Buffer[] = []
-      let timedOut = false
-      const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS
-      const timeoutId = setTimeout(() => {
-        timedOut = true
-        child.kill()
-      }, timeoutMs)
-
-      child.stdout.on('data', (chunk: Buffer | string) => {
-        stdoutChunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
-      })
-      child.stderr.on('data', (chunk: Buffer | string) => {
-        stderrChunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
-      })
-      child.on('error', (error: NodeJS.ErrnoException) => {
-        clearTimeout(timeoutId)
-        if (error.code === 'ENOENT') {
-          reject(new MissingClientError('Codex CLI is not installed.'))
-          return
-        }
-        reject(error)
-      })
-      child.on('close', (code) => {
-        clearTimeout(timeoutId)
-        resolve({
-          stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-          stderr: Buffer.concat(stderrChunks).toString('utf8'),
-          exitCode: code,
-          timedOut
-        })
-      })
-    }).then((result) => {
-      if (result.timedOut) {
-        throw new TimedOutError('Codex CLI command timed out.')
-      }
-      return result
-    })
-  }
-}
-
 function mapLoginStatusToValidationState(output: string): LlmValidationState {
   const normalized = output.trim()
   const lower = normalized.toLowerCase()
@@ -215,19 +155,6 @@ function isUnauthenticatedOutput(lower: string): boolean {
   )
 }
 
-function mapBridgeError(error: unknown): LlmValidationState {
-  if (error instanceof UnsupportedPlatformError) {
-    return buildValidationState('unsupported_platform', error.message)
-  }
-  if (error instanceof MissingClientError) {
-    return buildValidationState('missing_client', error.message)
-  }
-  if (error instanceof Error) {
-    return buildValidationState('error', error.message)
-  }
-  return buildValidationState('error', 'Unknown bridge error.')
-}
-
 function buildClassificationResult(
   payload: string,
   recentOutput: string
@@ -250,7 +177,9 @@ function buildClassificationResult(
 }
 
 export class OpenAiOfficialClientBridge implements OfficialClientBridge {
-  constructor(private readonly commandRunner: BridgeCommandRunner = new DefaultBridgeCommandRunner()) {}
+  constructor(
+    private readonly commandRunner: BridgeCommandRunner = new DefaultBridgeCommandRunner('Codex CLI is not installed.')
+  ) {}
 
   async connect(laneId: string, hooks: BridgeConnectHooks): Promise<LlmLaneConnectResult> {
     if (laneId !== OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID) {
@@ -274,6 +203,7 @@ export class OpenAiOfficialClientBridge implements OfficialClientBridge {
   async refreshState(): Promise<BridgeStateRefreshResult> {
     try {
       const result = await this.commandRunner.run({
+        command: getCodexExecutable(),
         args: ['login', 'status'],
         timeoutMs: DEFAULT_TIMEOUT_MS
       })
@@ -290,6 +220,7 @@ export class OpenAiOfficialClientBridge implements OfficialClientBridge {
   async validate(): Promise<BridgeValidationResult> {
     try {
       const result = await this.commandRunner.run({
+        command: getCodexExecutable(),
         args: ['exec', '--json', 'reply with exactly the word ok'],
         timeoutMs: DEFAULT_TIMEOUT_MS
       })
@@ -319,6 +250,7 @@ export class OpenAiOfficialClientBridge implements OfficialClientBridge {
   async classifyCause(recentOutput: string): Promise<BridgeClassificationResult> {
     try {
       const result = await this.commandRunner.run({
+        command: getCodexExecutable(),
         args: ['exec', '--json', buildClassificationPrompt(recentOutput)],
         timeoutMs: DEFAULT_TIMEOUT_MS
       })

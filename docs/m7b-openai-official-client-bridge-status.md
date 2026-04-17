@@ -47,4 +47,4 @@ Scope: execution status after `M7b`
 ## Follow-up
 
 - `M7b.1` completed the lane-native surface cleanup after `M7b`.
-- The next milestone candidate in the `M7` track is `M7c` for the second official-client bridge.
+- `M7c` completed the second official-client bridge with Gemini CLI while preserving the shipped OpenAI bridge.

@@ -89,7 +89,14 @@ export class TerminalManager {
     this.approvalDetector = detector
   }
 
-  create(id: string, shell?: string, cwd?: string): void {
+  private buildSpawnEnv(env?: NodeJS.ProcessEnv): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(env ?? (process.env as NodeJS.ProcessEnv))
+        .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+    )
+  }
+
+  create(id: string, shell?: string, cwd?: string, env?: NodeJS.ProcessEnv): void {
     const _t = performance.now()
     console.log(`[PERF][Main] TerminalManager.create start id=${id}`)
     if (this.terminals.has(id)) return
@@ -107,7 +114,7 @@ export class TerminalManager {
       cols: 80,
       rows: 24,
       cwd: resolvedCwd,
-      env: process.env as Record<string, string>
+      env: this.buildSpawnEnv(env)
     })
     this.terminals.set(id, term)
     this.terminalWorkspaces.set(id, resolvedCwd)

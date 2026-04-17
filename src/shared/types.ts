@@ -74,6 +74,8 @@ export interface LlmExecutionLane {
   validationState: LlmValidationState
 }
 
+export const GEMINI_DIRECT_HTTP_LANE_ID = 'gemini/direct_http'
+export const GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID = 'gemini/official_client_bridge'
 export const OPENAI_DIRECT_HTTP_LANE_ID = 'openai/direct_http'
 export const OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID = 'openai/official_client_bridge'
 export type LlmLaneMoveDelta = -1 | 1
@@ -172,35 +174,53 @@ export function isDirectHttpExecutionLane(
 export function isOpenAiOfficialClientBridgeLane(
   lane: Pick<LlmExecutionLane, 'laneId' | 'providerId' | 'transport'>
 ): boolean {
+  return lane.providerId === 'openai' && isOfficialClientBridgeLane(lane)
+}
+
+export function isGeminiOfficialClientBridgeLane(
+  lane: Pick<LlmExecutionLane, 'laneId' | 'providerId' | 'transport'>
+): boolean {
+  return lane.providerId === 'gemini' && isOfficialClientBridgeLane(lane)
+}
+
+export function isOfficialClientBridgeLane(
+  lane: Pick<LlmExecutionLane, 'laneId' | 'providerId' | 'transport'>
+): boolean {
   return (
-    lane.providerId === 'openai' &&
     lane.transport === 'official_client_bridge' &&
-    lane.laneId === OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID
+    lane.laneId === buildExecutionLaneId(lane.providerId, 'official_client_bridge') &&
+    (lane.providerId === 'openai' || lane.providerId === 'gemini')
   )
 }
 
-export function pinOpenAiBridgeLane(
+export function pinOfficialClientBridgeLanes(
   lanes: LlmExecutionLane[]
 ): LlmExecutionLane[] {
   const ordered = [...lanes]
-  const bridgeLane = ordered.find((lane) => isOpenAiOfficialClientBridgeLane(lane))
+  const bridgeLaneByProvider = new Map(
+    ordered
+      .filter((lane) => isOfficialClientBridgeLane(lane))
+      .map((lane) => [lane.providerId, lane] as const)
+  )
   const result: LlmExecutionLane[] = []
-  let bridgeInserted = false
 
   for (const lane of ordered) {
-    if (bridgeLane && lane.laneId === bridgeLane.laneId) {
+    if (isOfficialClientBridgeLane(lane)) {
       continue
     }
 
-    if (!bridgeInserted && bridgeLane && lane.laneId === OPENAI_DIRECT_HTTP_LANE_ID) {
+    const bridgeLane = lane.transport === 'direct_http'
+      ? bridgeLaneByProvider.get(lane.providerId)
+      : undefined
+    if (bridgeLane) {
       result.push(bridgeLane)
-      bridgeInserted = true
+      bridgeLaneByProvider.delete(lane.providerId)
     }
 
     result.push(lane)
   }
 
-  if (bridgeLane && !bridgeInserted) {
+  for (const bridgeLane of bridgeLaneByProvider.values()) {
     result.push(bridgeLane)
   }
 

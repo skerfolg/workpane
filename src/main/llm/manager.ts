@@ -15,15 +15,17 @@ import {
   ERR_NON_DIRECT_HTTP_LANE,
   ERR_UNKNOWN_LANE_ID,
   isDirectHttpExecutionLane,
-  isOpenAiOfficialClientBridgeLane,
+  isOfficialClientBridgeLane,
+  GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID,
   OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID,
-  pinOpenAiBridgeLane,
+  pinOfficialClientBridgeLanes,
   syncLegacyProviderShims
 } from '../../shared/types'
 import { LlmCredentialStore } from './credential-store'
 import { buildExecutionLaneOrder } from './fallback-chain'
 import { buildNoApiHint } from './no-api-hint'
-import type { BridgeConnectHooks } from './client-bridges/client-bridge-types'
+import type { BridgeConnectHooks, OfficialClientBridge } from './client-bridges/client-bridge-types'
+import { GeminiOfficialClientBridge } from './client-bridges/gemini-official-client-bridge'
 import { OpenAiOfficialClientBridge } from './client-bridges/openai-official-client-bridge'
 import { getProviderAdapter } from './provider-adapters'
 
@@ -51,12 +53,24 @@ function tailRecentOutput(text: string, maxLines: number): string {
 
 export class LlmManager {
   private credentialStore = new LlmCredentialStore()
-  private officialClientBridge = new OpenAiOfficialClientBridge()
+  private officialClientBridges: Record<string, OfficialClientBridge>
 
-  constructor(private readonly settingsManager: SettingsManager) {}
+  constructor(
+    private readonly settingsManager: SettingsManager,
+    options: {
+      officialClientBridges?: Partial<Record<string, OfficialClientBridge>>
+    } = {}
+  ) {
+    this.officialClientBridges = {
+      [GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID]:
+        options.officialClientBridges?.[GEMINI_OFFICIAL_CLIENT_BRIDGE_LANE_ID] ?? new GeminiOfficialClientBridge(),
+      [OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID]:
+        options.officialClientBridges?.[OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID] ?? new OpenAiOfficialClientBridge()
+    }
+  }
 
   private persistState(state: LlmSettingsState): void {
-    state.executionLanes = pinOpenAiBridgeLane(state.executionLanes)
+    state.executionLanes = pinOfficialClientBridgeLanes(state.executionLanes)
     syncLegacyProviderShims(state)
     this.settingsManager.set('llm', state)
   }
@@ -88,10 +102,18 @@ export class LlmManager {
     laneId: string
   ): LlmExecutionLane {
     const lane = this.getExecutionLane(state, laneId)
-    if (!isOpenAiOfficialClientBridgeLane(lane)) {
+    if (!isOfficialClientBridgeLane(lane) || !this.officialClientBridges[lane.laneId]) {
       throw new Error(`Unsupported official-client bridge lane: ${laneId}`)
     }
     return lane
+  }
+
+  private getOfficialClientBridge(laneId: string): OfficialClientBridge {
+    const bridge = this.officialClientBridges[laneId]
+    if (!bridge) {
+      throw new Error(`Unsupported official-client bridge lane: ${laneId}`)
+    }
+    return bridge
   }
 
   private updateLaneValidationState(
@@ -100,7 +122,7 @@ export class LlmManager {
     validationState: LlmExecutionLane['validationState'],
     enabled: boolean
   ): LlmExecutionLane {
-    state.executionLanes = pinOpenAiBridgeLane(
+    state.executionLanes = pinOfficialClientBridgeLanes(
       state.executionLanes.map((lane) => {
         if (lane.laneId !== laneId) {
           return lane
@@ -163,13 +185,13 @@ export class LlmManager {
   ): Promise<LlmLaneConnectResult> {
     const state = this.getSettingsState()
     this.getOfficialClientBridgeLane(state, laneId)
-    return await this.officialClientBridge.connect(laneId, hooks)
+    return await this.getOfficialClientBridge(laneId).connect(laneId, hooks)
   }
 
   async refreshLaneState(laneId: string): Promise<LlmExecutionLane> {
     const state = this.getSettingsState()
     const lane = this.getOfficialClientBridgeLane(state, laneId)
-    const refresh = await this.officialClientBridge.refreshState()
+    const refresh = await this.getOfficialClientBridge(laneId).refreshState()
     const enabled = refresh.validationState.status === 'connected'
       ? true
       : lane.enabled && refresh.validationState.status === 'unknown'
@@ -181,7 +203,7 @@ export class LlmManager {
   async validateLane(laneId: string): Promise<LlmExecutionLane> {
     const state = this.getSettingsState()
     this.getOfficialClientBridgeLane(state, laneId)
-    const validation = await this.officialClientBridge.validate()
+    const validation = await this.getOfficialClientBridge(laneId).validate()
     const updatedLane = this.updateLaneValidationState(
       state,
       laneId,
@@ -209,7 +231,7 @@ export class LlmManager {
     const state = this.getSettingsState()
     const targetLane = this.getDirectHttpLaneControlTarget(state, laneId)
     state.providers[targetLane.providerId].enabled = enabled
-    state.executionLanes = pinOpenAiBridgeLane(
+    state.executionLanes = pinOfficialClientBridgeLanes(
       state.executionLanes.map((lane) => lane.laneId === laneId ? { ...lane, enabled } : lane)
     )
     this.persistState(state)
@@ -228,7 +250,7 @@ export class LlmManager {
     }
     ;[directHttpLanes[index], directHttpLanes[swapIndex]] = [directHttpLanes[swapIndex], directHttpLanes[index]]
     const nonDirectHttpLanes = state.executionLanes.filter((lane) => !isDirectHttpExecutionLane(lane))
-    state.executionLanes = pinOpenAiBridgeLane([...directHttpLanes, ...nonDirectHttpLanes])
+    state.executionLanes = pinOfficialClientBridgeLanes([...directHttpLanes, ...nonDirectHttpLanes])
     this.persistState(state)
   }
 
@@ -277,13 +299,13 @@ export class LlmManager {
     state: LlmSettingsState,
     recentOutput: string
   ): Promise<LlmClassificationResult | null> {
-    if (lane.laneId !== OPENAI_OFFICIAL_CLIENT_BRIDGE_LANE_ID || lane.transport !== 'official_client_bridge') {
+    if (!isOfficialClientBridgeLane(lane)) {
       return null
     }
 
     try {
-      const response = await this.officialClientBridge.classifyCause(recentOutput)
-      state.usage.openai = updateUsage(state.usage.openai, response.inputTokens, response.outputTokens)
+      const response = await this.getOfficialClientBridge(lane.laneId).classifyCause(recentOutput)
+      state.usage[lane.providerId] = updateUsage(state.usage[lane.providerId], response.inputTokens, response.outputTokens)
       this.updateLaneValidationState(state, lane.laneId, response.validationState, true)
       this.persistState(state)
       return response.result
