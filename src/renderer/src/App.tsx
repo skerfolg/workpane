@@ -11,6 +11,7 @@ import Splitter from './components/Splitter/Splitter'
 import Welcome from './components/Welcome/Welcome'
 import TitleBar from './components/TitleBar/TitleBar'
 import StatusBar from './components/StatusBar/StatusBar'
+import MissionControlOverlay from './components/MissionControl/MissionControlOverlay'
 import UpdateNotification from './components/UpdateNotification/UpdateNotification'
 import NotificationBanner from './components/NotificationBanner/NotificationBanner'
 import { CommandPalette, Command } from './components/CommandPalette/CommandPalette'
@@ -39,6 +40,7 @@ function AppInner(): React.JSX.Element {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [editorVisible, setEditorVisible] = useState(false)
   const [terminalVisible, setTerminalVisible] = useState(true)
+  const [missionControlOpen, setMissionControlOpen] = useState(false)
 
   const { currentWorkspace, recentWorkspaces, openWorkspace, openWorkspacePath } = useWorkspace()
 
@@ -180,11 +182,20 @@ function AppInner(): React.JSX.Element {
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && wsSwitcherOpen) {
         setWsSwitcherOpen(false)
+        return
+      }
+      if (e.key === 'Escape' && missionControlOpen) {
+        setMissionControlOpen(false)
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault()
+        setMissionControlOpen((prev) => !prev)
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [wsSwitcherOpen])
+  }, [missionControlOpen, wsSwitcherOpen])
 
   useEffect(() => {
     if (openRequestSequence === 0) {
@@ -245,7 +256,11 @@ function AppInner(): React.JSX.Element {
         onToggleTerminal={() => setTerminalVisible((prev) => !prev)}
       />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <ActivityBar activeView={activeView} onViewChange={setActiveView} />
+        <ActivityBar
+          activeView={activeView}
+          onViewChange={setActiveView}
+          onOpenMissionControl={() => setMissionControlOpen(true)}
+        />
         {showSidebar && (
           <>
             <Sidebar
@@ -271,6 +286,7 @@ function AppInner(): React.JSX.Element {
       </div>
 
       <StatusBar workspaceName={currentWorkspace?.name ?? null} editorVisible={editorVisible} />
+      <MissionControlOverlay isOpen={missionControlOpen} onClose={() => setMissionControlOpen(false)} />
       <UpdateNotification />
 
       <NotificationBanner

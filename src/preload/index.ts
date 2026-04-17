@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   ApprovalDetectedEvent,
+  ManualTaskRecord,
+  MonitoringHistoryEvent,
+  MonitoringHistoryStoreStatus,
+  MonitoringTimelineFilter,
   SessionMonitoringClearEvent,
   SessionMonitoringTransitionEvent,
   SessionMonitoringUpsertEvent
@@ -230,6 +234,25 @@ const browserAPI = {
   }
 }
 
+const monitoringHistoryAPI = {
+  getStatus: () => ipcRenderer.invoke('history:get-status'),
+  listSessionEvents: (terminalId: string, filter: MonitoringTimelineFilter = 'all', limit?: number) =>
+    ipcRenderer.invoke('history:list-session-events', terminalId, filter, limit),
+  listWorkspaceFeed: (limit?: number) =>
+    ipcRenderer.invoke('history:list-workspace-feed', limit),
+  listManualTasks: () => ipcRenderer.invoke('history:list-manual-tasks') as Promise<ManualTaskRecord[]>,
+  listRecentCompleted: (limit?: number) =>
+    ipcRenderer.invoke('history:list-recent-completed', limit) as Promise<ManualTaskRecord[]>,
+  createManualTask: (title: string, note?: string | null) =>
+    ipcRenderer.invoke('history:create-manual-task', title, note) as Promise<ManualTaskRecord>,
+  updateManualTask: (taskId: string, updates: Partial<Pick<ManualTaskRecord, 'title' | 'note'>>) =>
+    ipcRenderer.invoke('history:update-manual-task', taskId, updates) as Promise<ManualTaskRecord | null>,
+  reorderManualTasks: (taskIds: string[]) =>
+    ipcRenderer.invoke('history:reorder-manual-tasks', taskIds) as Promise<ManualTaskRecord[]>,
+  completeManualTask: (taskId: string, link?: { terminalId?: string | null; eventId?: string | null }) =>
+    ipcRenderer.invoke('history:complete-manual-task', taskId, link) as Promise<ManualTaskRecord | null>
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -237,6 +260,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('settings', settingsAPI)
     contextBridge.exposeInMainWorld('llm', llmAPI)
     contextBridge.exposeInMainWorld('workspace', workspaceAPI)
+    contextBridge.exposeInMainWorld('monitoringHistory', monitoringHistoryAPI)
     contextBridge.exposeInMainWorld('fs', fsAPI)
     contextBridge.exposeInMainWorld('watcher', watcherAPI)
     contextBridge.exposeInMainWorld('appWindow', windowAPI)
@@ -261,6 +285,8 @@ if (process.contextIsolated) {
   window.llm = llmAPI
   // @ts-ignore (define in dts)
   window.workspace = workspaceAPI
+  // @ts-ignore (define in dts)
+  window.monitoringHistory = monitoringHistoryAPI
   // @ts-ignore (define in dts)
   window.fs = fsAPI
   // @ts-ignore (define in dts)

@@ -398,3 +398,47 @@ export interface SessionMonitoringTransitionEvent {
   patternName?: string
   matchedText?: string
 }
+
+export type MonitoringTimelineFilter = 'all' | 'approval-only' | 'error-only'
+
+export interface MonitoringHistoryEvent {
+  id: string
+  terminalId: string
+  workspacePath: string
+  sequence: number
+  timestamp: number
+  kind: SessionMonitoringTransitionKind
+  reason?: SessionMonitoringClearEvent['reason']
+  category?: SessionMonitoringCategory
+  confidence?: SessionMonitoringState['confidence']
+  source?: SessionMonitoringState['source']
+  summary?: string
+  patternName?: string
+  matchedText?: string
+}
+
+export interface MonitoringHistoryStoreStatus {
+  available: boolean
+  backend: 'sqlite' | 'json_fallback' | 'memory'
+  detail: string
+  storagePath: string | null
+}
+
+export interface MonitoringWorkspaceFeedEvent {
+  event: MonitoringHistoryEvent
+}
+
+export type ManualTaskStatus = 'active' | 'completed'
+
+export interface ManualTaskRecord {
+  id: string
+  title: string
+  note: string | null
+  status: ManualTaskStatus
+  order: number
+  createdAt: number
+  updatedAt: number
+  completedAt: number | null
+  linkedTerminalId: string | null
+  linkedEventId: string | null
+}

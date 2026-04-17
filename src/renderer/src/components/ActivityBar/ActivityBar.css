@@ -27,7 +27,25 @@
   border-radius: 0;
 }
 
-.activity-bar__item:hover {
+.activity-bar__utility {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0 2px;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  position: relative;
+  transition: color var(--tr-fast), background-color var(--tr-fast);
+  border-radius: 0;
+}
+
+.activity-bar__item:hover,
+.activity-bar__utility:hover {
   color: var(--text-1);
   background-color: var(--bg-3);
 }

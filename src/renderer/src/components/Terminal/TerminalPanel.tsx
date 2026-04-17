@@ -1,12 +1,16 @@
 import React, { useState, useCallback, useRef, useEffect, memo } from 'react'
-import { AlertTriangle, Globe, History, TerminalSquare, Columns2, Rows2 } from 'lucide-react'
+import { AlertTriangle, Globe, History, Clock3, TerminalSquare, Columns2, Rows2 } from 'lucide-react'
+import type { MonitoringTimelineFilter } from '../../../../shared/types'
 import { LeafNode } from '../../types/terminal-layout'
 import {
   useTerminalMonitoring,
   useTerminalTransitionLog,
   type MonitoringTerminalState
 } from '../../contexts/MonitoringContext'
-import { formatMonitoringDisplay } from '../../contexts/monitoring-state'
+import {
+  formatMonitoringDisplay,
+  formatMonitoringTransitionDisplay
+} from '../../contexts/monitoring-state'
 import { useTerminals } from '../../contexts/TerminalContext'
 import { useEditor } from '../../contexts/EditorContext'
 import { XTerminal } from './XTerminal'
@@ -73,6 +77,9 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
   const [isDragOver, setIsDragOver] = useState(false)
   const [dropZone, setDropZone] = useState<DropZone>(null)
   const [isTransitionLogOpen, setIsTransitionLogOpen] = useState(false)
+  const [isPersistedTimelineOpen, setIsPersistedTimelineOpen] = useState(false)
+  const [timelineFilter, setTimelineFilter] = useState<MonitoringTimelineFilter>('all')
+  const [persistedTimeline, setPersistedTimeline] = useState<ReturnType<typeof useTerminalTransitionLog>>([])
   // Track which terminals have been activated — only mount xterm when first shown
   const [mountedIds, setMountedIds] = useState<Set<string>>(() =>
     new Set(node.activeTerminalId ? [node.activeTerminalId] : [])
@@ -111,6 +118,62 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
       ipc.removeListener('browser:open-requested', handler)
     }
   }, [createBrowser])
+
+  const loadPersistedTimeline = useCallback(async (
+    terminalId: string | null,
+    filter: MonitoringTimelineFilter
+  ) => {
+    if (!terminalId || !window.monitoringHistory) {
+      setPersistedTimeline([])
+      return
+    }
+
+    const events = await window.monitoringHistory.listSessionEvents(
+      terminalId,
+      filter,
+      200
+    )
+
+    setPersistedTimeline(events.map((entry) => ({
+      id: entry.id,
+      sequence: entry.sequence,
+      kind: entry.kind,
+      timestamp: entry.timestamp,
+      title: formatMonitoringTransitionDisplay({
+        ...entry,
+        cause: entry.category
+      }).title,
+      meta: formatMonitoringTransitionDisplay({
+        ...entry,
+        cause: entry.category
+      }).meta,
+      detail: formatMonitoringTransitionDisplay({
+        ...entry,
+        cause: entry.category
+      }).detail
+    })))
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadTimeline = async () => {
+      if (!isPersistedTimelineOpen || !node.activeTerminalId || !window.monitoringHistory) {
+        setPersistedTimeline([])
+        return
+      }
+      if (cancelled) {
+        return
+      }
+      await loadPersistedTimeline(node.activeTerminalId, timelineFilter)
+    }
+
+    void loadTimeline()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTransitionLog.length, isPersistedTimelineOpen, loadPersistedTimeline, node.activeTerminalId, timelineFilter])
 
   // When activeTerminalId changes, mark it as mounted
   if (node.activeTerminalId && !mountedIds.has(node.activeTerminalId)) {
@@ -458,6 +521,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
             e.stopPropagation()
             setIsTransitionLogOpen((prev) => !prev)
           }}
+          data-testid="terminal-transition-log-toggle"
           title={activeTransitionLog.length > 0 ? 'Toggle Transition Log' : 'No transition history yet'}
           disabled={!node.activeTerminalId}
           style={{
@@ -476,6 +540,35 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
           }}
         >
           <History size={13} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            const nextOpen = !isPersistedTimelineOpen
+            setIsPersistedTimelineOpen(nextOpen)
+            if (nextOpen) {
+              void loadPersistedTimeline(node.activeTerminalId, timelineFilter)
+            }
+          }}
+          data-testid="terminal-persisted-timeline-toggle"
+          title="Toggle Timeline"
+          disabled={!node.activeTerminalId}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: isPersistedTimelineOpen ? 'var(--color-tab-active-bg, rgba(255,255,255,0.05))' : 'none',
+            border: 'none', borderRadius: '3px',
+            color: isPersistedTimelineOpen ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+            cursor: node.activeTerminalId ? 'pointer' : 'default',
+            padding: '2px', flexShrink: 0, opacity: node.activeTerminalId ? 0.8 : 0.4
+          }}
+          onMouseEnter={(e) => {
+            if (node.activeTerminalId) e.currentTarget.style.opacity = '1'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.opacity = node.activeTerminalId ? '0.8' : '0.4'
+          }}
+        >
+          <Clock3 size={13} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); splitPanel(node.panelId, 'horizontal') }}
@@ -588,6 +681,94 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {isPersistedTimelineOpen && (
+        <div
+          style={{
+            maxHeight: '132px',
+            overflowY: 'auto',
+            backgroundColor: 'var(--color-tab-active-bg, rgba(255,255,255,0.03))',
+            borderBottom: '1px solid var(--color-border)',
+            padding: '8px 10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            flexShrink: 0
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: '6px',
+              marginBottom: '8px'
+            }}
+          >
+            {(['all', 'approval-only', 'error-only'] as MonitoringTimelineFilter[]).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setTimelineFilter(filter)}
+                style={{
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '4px',
+                  background: timelineFilter === filter ? 'var(--color-tab-active-bg, rgba(255,255,255,0.08))' : 'transparent',
+                  color: 'var(--color-text-secondary)',
+                  fontSize: '11px',
+                  padding: '4px 6px',
+                  cursor: 'pointer'
+                }}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+          {persistedTimeline.length === 0 ? (
+            <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>No timeline history yet.</div>
+          ) : (
+            persistedTimeline.map((entry) => (
+              <div
+                key={entry.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                  fontSize: '11px',
+                  color: 'var(--color-text-secondary)'
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px'
+                  }}
+                >
+                  <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{entry.title}</span>
+                  <span style={{ flexShrink: 0, opacity: 0.75 }}>
+                    {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </div>
+                <span>{entry.meta}</span>
+                {entry.detail && (
+                  <span
+                    style={{
+                      color: 'var(--color-text-primary)',
+                      opacity: 0.85,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                    title={entry.detail}
+                  >
+                    {entry.detail}
+                  </span>
+                )}
+              </div>
+            ))
+          )}
         </div>
       )}
 

@@ -52,7 +52,9 @@ function Sidebar({
   const [terminalSectionOpen, setTerminalSectionOpen] = useState(true)
   const [queueSectionOpen, setQueueSectionOpen] = useState(true)
   const [fileExplorerSectionOpen, setFileExplorerSectionOpen] = useState(true)
-  const { attentionQueue, sidebarSectionCue } = useMonitoring()
+  const { queueItems, sidebarSectionCue, createManualTask } = useMonitoring()
+  const recentCompletedItems = queueItems.filter((entry) => entry.kind === 'completed')
+  const activeQueueItems = queueItems.filter((entry) => entry.kind !== 'completed')
 
   if (!isVisible) return null
 
@@ -80,6 +82,22 @@ function Sidebar({
               >
                 <span className="sidebar__section-chevron">{terminalSectionOpen ? '▾' : '▶'}</span>
                 <span>Terminal</span>
+                <button
+                  type="button"
+                  data-testid="sidebar-add-task"
+                  className="sidebar__section-action"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    const title = prompt('Task title')
+                    if (!title?.trim()) {
+                      return
+                    }
+                    const note = prompt('Optional note') ?? ''
+                    void createManualTask(title.trim(), note.trim() || null)
+                  }}
+                >
+                  Add task
+                </button>
                 {affectedGroupCount > 0 && (
                   <span
                     aria-label={`${affectedGroupCount} groups need attention`}
@@ -92,7 +110,7 @@ function Sidebar({
               </div>
               {terminalSectionOpen && (
                 <>
-                  {attentionQueue.length > 0 && (
+                  {(activeQueueItems.length > 0 || recentCompletedItems.length > 0) && (
                     <div className="sidebar__subsection" data-testid="monitoring-queue-subsection">
                       <div
                         className="sidebar__subsection-header"
@@ -100,7 +118,7 @@ function Sidebar({
                       >
                         <span className="sidebar__section-chevron">{queueSectionOpen ? '▾' : '▶'}</span>
                         <span>Queue</span>
-                        <span className="sidebar__subsection-count">{attentionQueue.length}</span>
+                        <span className="sidebar__subsection-count">{activeQueueItems.length}</span>
                       </div>
                       {queueSectionOpen && <MonitoringQueue />}
                     </div>

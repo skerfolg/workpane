@@ -14,6 +14,7 @@ import { assertWithinWorkspace } from './path-validator'
 import { ApprovalDetector } from './approval-detector'
 import { BrowserManager } from './browser-manager'
 import { McpBrowserHandler } from './mcp-browser-server'
+import { HistoryStore } from './history-store'
 import * as path from 'path'
 import { LlmManager } from './llm/manager'
 import type {
@@ -21,6 +22,9 @@ import type {
   LlmExecutionLane,
   LlmLaneConnectResult,
   LlmLaneMoveDelta,
+  ManualTaskRecord,
+  MonitoringHistoryEvent,
+  MonitoringTimelineFilter,
   LlmProviderId,
   SessionMonitoringClearEvent,
   SessionMonitoringState,
@@ -37,6 +41,7 @@ const browserManager = new BrowserManager()
 const settingsManager = new SettingsManager()
 const llmManager = new LlmManager(settingsManager)
 const workspaceManager = new WorkspaceManager(settingsManager)
+const historyStore = new HistoryStore()
 const watcherManager = new WatcherManager()
 
 // Keep search results coherent after watcher batches flush to the renderer.
@@ -106,9 +111,35 @@ function emitMonitoringTransition(
     sequence
   }
 
+  historyStore.appendMonitoringTransition(event)
+
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('terminal:monitoring-transition', event)
   }
+}
+
+const MANUAL_TASKS_STATE_KEY = 'monitoringManualTasks'
+
+async function getManualTasksState(): Promise<ManualTaskRecord[]> {
+  const state = await workspaceManager.getWorkspaceState()
+  const rawTasks = state?.[MANUAL_TASKS_STATE_KEY]
+  if (!Array.isArray(rawTasks)) {
+    return []
+  }
+
+  return rawTasks
+    .filter((task): task is ManualTaskRecord => typeof task === 'object' && task != null && typeof (task as { id?: unknown }).id === 'string')
+    .sort((left, right) => left.order - right.order || right.updatedAt - left.updatedAt)
+}
+
+async function saveManualTasksState(tasks: ManualTaskRecord[]): Promise<void> {
+  workspaceManager.saveWorkspaceStateSync({
+    [MANUAL_TASKS_STATE_KEY]: tasks
+  })
+}
+
+function buildManualTaskId(): string {
+  return `manual-task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function emitMonitoringUpsert(state: SessionMonitoringState): void {
@@ -332,6 +363,10 @@ if (process.env.NODE_ENV === 'test') {
   ipcMain.handle('monitoring:test-clear', (_event, event: SessionMonitoringClearEvent) => {
     emitMonitoringClear(event)
   })
+
+  ipcMain.handle('monitoring:test-transition', (_event, event: Omit<SessionMonitoringTransitionEvent, 'id' | 'sequence'>) => {
+    emitMonitoringTransition(event)
+  })
 }
 
 // IPC handlers for settings
@@ -432,6 +467,144 @@ ipcMain.handle('llm:classify-preview', async (_event, input) => {
   return llmManager.classifyCandidate(input)
 })
 
+ipcMain.handle('history:get-status', async () => {
+  return historyStore.getStatus()
+})
+
+ipcMain.handle('history:list-session-events', async (
+  _event,
+  terminalId: string,
+  filter: MonitoringTimelineFilter = 'all',
+  limit = 200
+): Promise<MonitoringHistoryEvent[]> => {
+  return historyStore.listSessionEvents(terminalId, filter, limit)
+})
+
+ipcMain.handle('history:list-workspace-feed', async (
+  _event,
+  limit = 100
+): Promise<MonitoringHistoryEvent[]> => {
+  return historyStore.listWorkspaceFeed(limit)
+})
+
+ipcMain.handle('history:list-manual-tasks', async () => {
+  return await getManualTasksState()
+})
+
+ipcMain.handle('history:list-recent-completed', async (_event, limit = 10) => {
+  const tasks = await getManualTasksState()
+  return tasks
+    .filter((task) => task.status === 'completed')
+    .sort((left, right) => (right.completedAt ?? 0) - (left.completedAt ?? 0))
+    .slice(0, limit)
+})
+
+ipcMain.handle('history:create-manual-task', async (_event, title: string, note?: string | null) => {
+  const tasks = await getManualTasksState()
+  const now = Date.now()
+  const nextTask: ManualTaskRecord = {
+    id: buildManualTaskId(),
+    title: title.trim(),
+    note: typeof note === 'string' && note.trim() ? note.trim() : null,
+    status: 'active',
+    order: tasks.filter((task) => task.status === 'active').length,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null,
+    linkedTerminalId: null,
+    linkedEventId: null
+  }
+  const nextTasks = [...tasks, nextTask]
+  await saveManualTasksState(nextTasks)
+  return nextTask
+})
+
+ipcMain.handle('history:update-manual-task', async (
+  _event,
+  taskId: string,
+  updates: Partial<Pick<ManualTaskRecord, 'title' | 'note'>>
+) => {
+  const tasks = await getManualTasksState()
+  const now = Date.now()
+  const nextTasks = tasks.map((task) => {
+    if (task.id !== taskId) {
+      return task
+    }
+    return {
+      ...task,
+      title: typeof updates.title === 'string' && updates.title.trim() ? updates.title.trim() : task.title,
+      note: typeof updates.note === 'string'
+        ? (updates.note.trim() ? updates.note.trim() : null)
+        : task.note,
+      updatedAt: now
+    }
+  })
+  await saveManualTasksState(nextTasks)
+  return nextTasks.find((task) => task.id === taskId) ?? null
+})
+
+ipcMain.handle('history:reorder-manual-tasks', async (_event, taskIds: string[]) => {
+  const tasks = await getManualTasksState()
+  const taskById = new Map(tasks.map((task) => [task.id, task] as const))
+  let nextOrder = 0
+  const reorderedTasks: ManualTaskRecord[] = []
+
+  for (const taskId of taskIds) {
+    const task = taskById.get(taskId)
+    if (!task || task.status !== 'active') {
+      continue
+    }
+    reorderedTasks.push({
+      ...task,
+      order: nextOrder++,
+      updatedAt: Date.now()
+    })
+    taskById.delete(taskId)
+  }
+
+  for (const task of tasks) {
+    if (!taskById.has(task.id)) {
+      continue
+    }
+    if (task.status === 'active') {
+      reorderedTasks.push({
+        ...task,
+        order: nextOrder++,
+        updatedAt: Date.now()
+      })
+      continue
+    }
+    reorderedTasks.push(task)
+  }
+
+  await saveManualTasksState(reorderedTasks)
+  return reorderedTasks
+})
+
+ipcMain.handle('history:complete-manual-task', async (
+  _event,
+  taskId: string,
+  link?: { terminalId?: string | null; eventId?: string | null }
+) => {
+  const tasks = await getManualTasksState()
+  const now = Date.now()
+  const nextTasks = tasks.map((task) => {
+    if (task.id !== taskId) {
+      return task
+    }
+    return {
+      ...task,
+      status: 'completed' as const,
+      completedAt: now,
+      updatedAt: now,
+      linkedTerminalId: link?.terminalId ?? task.linkedTerminalId ?? null,
+      linkedEventId: link?.eventId ?? task.linkedEventId ?? null
+    }
+  })
+  await saveManualTasksState(nextTasks)
+  return nextTasks.find((task) => task.id === taskId) ?? null
+})
+
 // IPC handlers for workspace
 ipcMain.handle('workspace:open', async () => {
   const _t = performance.now()
@@ -445,6 +618,7 @@ ipcMain.handle('workspace:open', async () => {
   const dirPath = result.filePaths[0]
   console.log(`[PERF][Main] workspace:open → openWorkspace`)
   const workspaceInfo = workspaceManager.openWorkspace(dirPath)
+  historyStore.openWorkspace(dirPath)
   resetMonitoringLifecycleState()
   mainWindow?.webContents.send('workspace:changed', workspaceInfo)
   console.log(`[PERF][Main] workspace:open done ${(performance.now() - _t).toFixed(1)}ms`)
@@ -455,6 +629,7 @@ ipcMain.handle('workspace:open-path', (_event, dirPath: string) => {
   const _t = performance.now()
   console.log(`[PERF][Main] workspace:open-path start path=${dirPath}`)
   const workspaceInfo = workspaceManager.openWorkspace(dirPath)
+  historyStore.openWorkspace(dirPath)
   resetMonitoringLifecycleState()
   mainWindow?.webContents.send('workspace:changed', workspaceInfo)
   console.log(`[PERF][Main] workspace:open-path done ${(performance.now() - _t).toFixed(1)}ms`)
@@ -463,6 +638,7 @@ ipcMain.handle('workspace:open-path', (_event, dirPath: string) => {
 
 ipcMain.handle('workspace:close', () => {
   workspaceManager.closeWorkspace()
+  historyStore.closeWorkspace()
   resetMonitoringLifecycleState()
   mainWindow?.webContents.send('workspace:changed', null)
 })

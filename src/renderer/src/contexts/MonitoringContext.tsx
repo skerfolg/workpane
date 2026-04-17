@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type {
   LlmCauseCategory,
+  ManualTaskRecord,
+  MonitoringHistoryEvent,
+  MonitoringHistoryStoreStatus,
   SessionMonitoringClearEvent,
   SessionMonitoringState,
   SessionMonitoringTransitionEvent
@@ -95,13 +98,16 @@ export interface MonitoringGlobalTransitionState {
 }
 
 export interface MonitoringQueueState {
-  terminalId: string
-  terminalLabel: string
-  groupLabel: string
+  id: string
+  kind: 'live' | 'task' | 'completed'
+  terminalId: string | null
+  terminalLabel: string | null
+  groupLabel: string | null
   headline: string
   meta: string
   detail: string
   timestamp: number
+  linkedEventId?: string | null
 }
 
 interface MonitoringContextValue {
@@ -109,9 +115,20 @@ interface MonitoringContextValue {
   activeGroupAggregate: MonitoringAggregate
   globalAggregate: MonitoringAggregate
   globalTransitionFeed: MonitoringGlobalTransitionState[]
+  persistedWorkspaceFeed: MonitoringGlobalTransitionState[]
   attentionQueue: MonitoringQueueState[]
+  queueItems: MonitoringQueueState[]
   sidebarSectionCue: MonitoringSectionCue
   latestAttentionTransition: AttentionTransition | null
+  historyStatus: MonitoringHistoryStoreStatus | null
+  historyRevision: number
+  createManualTask: (title: string, note?: string | null) => Promise<void>
+  updateManualTask: (taskId: string, updates: Partial<Pick<ManualTaskRecord, 'title' | 'note'>>) => Promise<void>
+  reorderManualTasks: (taskIds: string[]) => Promise<void>
+  completeManualTask: (
+    taskId: string,
+    link?: { terminalId?: string | null; eventId?: string | null }
+  ) => Promise<void>
   getEntry: (terminalId: string | null | undefined) => MonitoringEntry | null
   getGroupSummary: (terminalIds: string[]) => MonitoringAggregate
   getGroupMonitoringState: (groupId: string) => MonitoringGroupState
@@ -144,6 +161,11 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }):
   const { terminals, groups, activeGroupId } = useTerminals()
   const [state, setState] = useState<MonitoringState>(() => createMonitoringState())
   const [latestAttentionTransition, setLatestAttentionTransition] = useState<AttentionTransition | null>(null)
+  const [historyStatus, setHistoryStatus] = useState<MonitoringHistoryStoreStatus | null>(null)
+  const [historyRevision, setHistoryRevision] = useState(0)
+  const [manualTasks, setManualTasks] = useState<ManualTaskRecord[]>([])
+  const [recentCompletedTasks, setRecentCompletedTasks] = useState<ManualTaskRecord[]>([])
+  const [persistedWorkspaceFeedEvents, setPersistedWorkspaceFeedEvents] = useState<MonitoringHistoryEvent[]>([])
   const transitionSequenceRef = useRef(0)
 
   useEffect(() => {
@@ -184,6 +206,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }):
     const unsubscribeTransition = window.terminal.onMonitoringTransition?.((event: SessionMonitoringTransitionEvent) => {
       const transition = toMonitoringTransitionEntry(event)
       setState((prev) => monitoringStateReducer(prev, { type: 'append-transition', transition }))
+      setHistoryRevision((prev) => prev + 1)
     })
 
     return () => {
@@ -206,6 +229,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }):
 
     const unsubscribe = workspaceApi.onChanged(() => {
       resetMonitoringState()
+      setHistoryRevision((prev) => prev + 1)
     })
 
     return unsubscribe
@@ -232,6 +256,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }):
     }
 
     attentionQueue.push({
+      id: `live:${entry.terminalId}`,
+      kind: 'live',
       terminalId: entry.terminalId,
       terminalLabel: terminal.name,
       groupLabel: group.name,
@@ -241,6 +267,52 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }):
       timestamp: entry.updatedAt
     })
   }
+  const activeManualTasks = manualTasks
+    .filter((task) => task.status === 'active')
+    .sort((left, right) => left.order - right.order || right.updatedAt - left.updatedAt)
+  const queueItems: MonitoringQueueState[] = [
+    ...attentionQueue,
+    ...activeManualTasks.map((task) => {
+      const group = task.linkedTerminalId
+        ? groups.find((item) => item.terminalIds.includes(task.linkedTerminalId))
+        : null
+      const terminal = task.linkedTerminalId
+        ? terminals.find((item) => item.id === task.linkedTerminalId)
+        : null
+      return {
+        id: task.id,
+        kind: 'task' as const,
+        terminalId: task.linkedTerminalId ?? null,
+        terminalLabel: terminal?.name ?? null,
+        groupLabel: group?.name ?? null,
+        headline: task.title,
+        meta: task.note ? 'manual task · note attached' : 'manual task',
+        detail: task.note ?? '',
+        timestamp: task.updatedAt
+      }
+    })
+  ]
+  const completedQueueItems: MonitoringQueueState[] = recentCompletedTasks.map((task) => {
+    const group = task.linkedTerminalId
+      ? groups.find((item) => item.terminalIds.includes(task.linkedTerminalId))
+      : null
+    const terminal = task.linkedTerminalId
+      ? terminals.find((item) => item.id === task.linkedTerminalId)
+      : null
+    return {
+      id: task.id,
+      terminalId: task.linkedTerminalId,
+      terminalLabel: terminal?.name ?? null,
+      groupLabel: group?.name ?? null,
+      headline: task.title,
+      meta: 'recently completed',
+      detail: task.note ?? '',
+      timestamp: task.completedAt ?? task.updatedAt,
+      kind: 'completed',
+      linkedEventId: task.linkedEventId
+    }
+  })
+  const allQueueItems = [...queueItems, ...completedQueueItems]
   const globalTransitionFeed = selectGlobalTransitionFeed(state).map((entry) => {
     const terminal = terminals.find((item) => item.id === entry.terminalId) ?? null
     const group = groups.find((item) => item.terminalIds.includes(entry.terminalId)) ?? null
@@ -258,15 +330,92 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }):
       isAvailable: terminal != null && group != null
     }
   })
+  const persistedWorkspaceFeed = persistedWorkspaceFeedEvents.map((entry) => {
+    const terminal = terminals.find((item) => item.id === entry.terminalId) ?? null
+    const group = groups.find((item) => item.terminalIds.includes(entry.terminalId)) ?? null
+    const display = formatMonitoringTransitionDisplay(entry)
+    return {
+      id: entry.id,
+      terminalId: entry.terminalId,
+      timestamp: entry.timestamp,
+      title: display.title,
+      meta: display.meta,
+      detail: display.detail,
+      terminalLabel: terminal?.name ?? entry.terminalId,
+      groupLabel: group?.name ?? 'Terminal unavailable',
+      currentAttention: state.byTerminalId[entry.terminalId] != null,
+      isAvailable: terminal != null && group != null
+    }
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    const loadPersistentState = async () => {
+      if (!window.monitoringHistory) {
+        return
+      }
+      const [status, tasks, recentCompleted, workspaceFeed] = await Promise.all([
+        window.monitoringHistory.getStatus(),
+        window.monitoringHistory.listManualTasks(),
+        window.monitoringHistory.listRecentCompleted(10),
+        window.monitoringHistory.listWorkspaceFeed(50)
+      ])
+      if (cancelled) {
+        return
+      }
+      setHistoryStatus(status)
+      setManualTasks(tasks)
+      setRecentCompletedTasks(recentCompleted)
+      setPersistedWorkspaceFeedEvents(workspaceFeed)
+    }
+    void loadPersistentState()
+    return () => {
+      cancelled = true
+    }
+  }, [historyRevision])
+
+  const createManualTask = async (title: string, note?: string | null) => {
+    await window.monitoringHistory?.createManualTask(title, note)
+    setHistoryRevision((prev) => prev + 1)
+  }
+
+  const updateManualTask = async (
+    taskId: string,
+    updates: Partial<Pick<ManualTaskRecord, 'title' | 'note'>>
+  ) => {
+    await window.monitoringHistory?.updateManualTask(taskId, updates)
+    setHistoryRevision((prev) => prev + 1)
+  }
+
+  const reorderManualTasks = async (taskIds: string[]) => {
+    await window.monitoringHistory?.reorderManualTasks(taskIds)
+    setHistoryRevision((prev) => prev + 1)
+  }
+
+  const completeManualTask = async (
+    taskId: string,
+    link?: { terminalId?: string | null; eventId?: string | null }
+  ) => {
+    await window.monitoringHistory?.completeManualTask(taskId, link)
+    setHistoryRevision((prev) => prev + 1)
+  }
 
   const value: MonitoringContextValue = {
     state,
     activeGroupAggregate,
     globalAggregate,
     globalTransitionFeed,
+    persistedWorkspaceFeed,
     attentionQueue,
+    queueItems: allQueueItems,
     sidebarSectionCue,
     latestAttentionTransition,
+    historyStatus,
+    historyRevision,
+    createManualTask,
+    updateManualTask,
+    reorderManualTasks,
+    completeManualTask,
     getEntry: (terminalId) => {
       if (!terminalId) {
         return null

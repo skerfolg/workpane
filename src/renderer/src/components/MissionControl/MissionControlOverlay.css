@@ -1,0 +1,127 @@
+.mission-control {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+}
+
+.mission-control__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.mission-control__panel {
+  position: relative;
+  margin: 48px auto;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.35);
+  padding: 20px;
+}
+
+.mission-control__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.mission-control__header h2 {
+  margin: 0;
+  color: var(--text-1);
+}
+
+.mission-control__header p {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.mission-control__close {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 6px;
+}
+
+.mission-control__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.mission-control__group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mission-control__group-header {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+}
+
+.mission-control__matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.mission-control__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  color: var(--text-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mission-control__card--attention {
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+.mission-control__card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mission-control__card-title {
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+}
+
+.mission-control__card-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mission-control__card-headline {
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.mission-control__card-meta {
+  color: var(--text-3);
+  font-size: 11px;
+}

@@ -1,6 +1,10 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   ApprovalDetectedEvent,
+  ManualTaskRecord,
+  MonitoringHistoryEvent,
+  MonitoringHistoryStoreStatus,
+  MonitoringTimelineFilter,
   SessionMonitoringClearEvent,
   SessionMonitoringTransitionEvent,
   SessionMonitoringUpsertEvent,
@@ -72,6 +76,28 @@ export interface WorkspaceAPI {
   saveState: (state: Record<string, unknown>) => Promise<void>
   getState: () => Promise<Record<string, unknown> | null>
   onChanged: (callback: (workspaceInfo: WorkspaceInfo | null) => void) => () => void
+}
+
+export interface MonitoringHistoryAPI {
+  getStatus: () => Promise<MonitoringHistoryStoreStatus>
+  listSessionEvents: (
+    terminalId: string,
+    filter?: MonitoringTimelineFilter,
+    limit?: number
+  ) => Promise<MonitoringHistoryEvent[]>
+  listWorkspaceFeed: (limit?: number) => Promise<MonitoringHistoryEvent[]>
+  listManualTasks: () => Promise<ManualTaskRecord[]>
+  listRecentCompleted: (limit?: number) => Promise<ManualTaskRecord[]>
+  createManualTask: (title: string, note?: string | null) => Promise<ManualTaskRecord>
+  updateManualTask: (
+    taskId: string,
+    updates: Partial<Pick<ManualTaskRecord, 'title' | 'note'>>
+  ) => Promise<ManualTaskRecord | null>
+  reorderManualTasks: (taskIds: string[]) => Promise<ManualTaskRecord[]>
+  completeManualTask: (
+    taskId: string,
+    link?: { terminalId?: string | null; eventId?: string | null }
+  ) => Promise<ManualTaskRecord | null>
 }
 
 export interface DirEntry {
@@ -172,6 +198,7 @@ declare global {
     settings: SettingsAPI
     llm: LlmAPI
     workspace: WorkspaceAPI
+    monitoringHistory: MonitoringHistoryAPI
     fs: FsAPI
     watcher: WatcherAPI
     shell: ShellAPI

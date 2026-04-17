@@ -122,6 +122,17 @@ function forceKillAppProcess(app: ElectronApplication): void {
   }
 }
 
+function removeDirWithRetry(targetPath: string, attempts = 5): void {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      fs.rmSync(targetPath, { recursive: true, force: true })
+      return
+    } catch {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
+    }
+  }
+}
+
 export async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
   const mainPath = path.join(__dirname, '../../../out/main/index.js')
   const isolatedAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'workpane-e2e-'))
@@ -175,7 +186,7 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
     const isolatedAppData = appStoragePaths.get(app)
     if (isolatedAppData) {
       appStoragePaths.delete(app)
-      fs.rmSync(isolatedAppData, { recursive: true, force: true })
+      removeDirWithRetry(isolatedAppData)
     }
   }
 }
@@ -280,6 +291,30 @@ export async function invokeMonitoringTestClear(
 ): Promise<void> {
   await page.evaluate(async (payload) => {
     await (window as any).electron.ipcRenderer.invoke('monitoring:test-clear', {
+      ...payload,
+      timestamp: payload.timestamp ?? Date.now()
+    })
+  }, event)
+}
+
+export async function invokeMonitoringTestTransition(
+  page: Page,
+  event: {
+    terminalId: string
+    workspacePath: string
+    timestamp?: number
+    kind: 'entered' | 'updated' | 'cleared'
+    reason?: 'write' | 'exit'
+    category?: 'approval' | 'input-needed' | 'error' | 'unknown'
+    confidence?: 'low' | 'medium' | 'high'
+    source?: 'llm' | 'no-api'
+    summary?: string
+    patternName?: string
+    matchedText?: string
+  }
+): Promise<void> {
+  await page.evaluate(async (payload) => {
+    await (window as any).electron.ipcRenderer.invoke('monitoring:test-transition', {
       ...payload,
       timestamp: payload.timestamp ?? Date.now()
     })
