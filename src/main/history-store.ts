@@ -18,6 +18,17 @@ type SqliteModule = {
   }
 }
 
+interface HistoryStoreLogger {
+  info: (...args: unknown[]) => void
+  warn: (...args: unknown[]) => void
+  error: (...args: unknown[]) => void
+}
+
+interface HistoryStoreDependencies {
+  loadSqliteModule?: () => SqliteModule | null
+  logger?: HistoryStoreLogger
+}
+
 interface HistoryBackend {
   append(event: MonitoringHistoryEvent): void
   listSessionEvents(terminalId: string, filter: MonitoringTimelineFilter, limit: number): MonitoringHistoryEvent[]
@@ -59,10 +70,12 @@ function matchesTimelineFilter(
 
 class JsonHistoryBackend implements HistoryBackend {
   private readonly storagePath: string
+  private readonly statusDetail: string
   private events: MonitoringHistoryEvent[] = []
 
-  constructor(workspacePath: string) {
+  constructor(workspacePath: string, detail = 'Using JSON fallback history backend.') {
     this.storagePath = join(workspacePath, '.workspace', 'workpane-history.json')
+    this.statusDetail = detail
     if (existsSync(this.storagePath)) {
       try {
         this.events = JSON.parse(readFileSync(this.storagePath, 'utf8')) as MonitoringHistoryEvent[]
@@ -95,7 +108,7 @@ class JsonHistoryBackend implements HistoryBackend {
     return {
       available: true,
       backend: 'json_fallback',
-      detail: 'Using JSON fallback history backend.',
+      detail: this.statusDetail,
       storagePath: this.storagePath
     }
   }
@@ -233,8 +246,15 @@ function loadSqliteModule(): SqliteModule | null {
 }
 
 export class HistoryStore {
+  private readonly loadSqliteModuleImpl: () => SqliteModule | null
+  private readonly logger: HistoryStoreLogger
   private backend: HistoryBackend | null = null
   private currentWorkspacePath: string | null = null
+
+  constructor(deps: HistoryStoreDependencies = {}) {
+    this.loadSqliteModuleImpl = deps.loadSqliteModule ?? loadSqliteModule
+    this.logger = deps.logger ?? console
+  }
 
   openWorkspace(workspacePath: string): void {
     this.closeWorkspace()
@@ -243,22 +263,51 @@ export class HistoryStore {
       mkdirSync(workspaceDir, { recursive: true })
     }
 
-    const sqlite = loadSqliteModule()
     this.currentWorkspacePath = workspacePath
+    const forcedBackend = process.env.WORKPANE_HISTORY_BACKEND
+
+    if (forcedBackend === 'json_fallback') {
+      this.logger.warn('[Main] HistoryStore using forced JSON fallback backend via WORKPANE_HISTORY_BACKEND.')
+      this.backend = new JsonHistoryBackend(
+        workspacePath,
+        'Using JSON fallback history backend (forced by WORKPANE_HISTORY_BACKEND).'
+      )
+      return
+    }
+
+    let sqlite: SqliteModule | null = null
+    try {
+      sqlite = this.loadSqliteModuleImpl()
+    } catch (error) {
+      this.logger.warn('[Main] HistoryStore sqlite module load failed, falling back to JSON:', error)
+    }
 
     if (sqlite) {
       try {
         this.backend = new SqliteHistoryBackend(workspacePath, sqlite)
+        this.logger.info('[Main] HistoryStore using sqlite backend.')
         return
       } catch (error) {
-        console.error('[Main] HistoryStore sqlite init failed, falling back to JSON:', error)
+        this.logger.error('[Main] HistoryStore sqlite init failed, falling back to JSON:', error)
+        this.backend = new JsonHistoryBackend(
+          workspacePath,
+          'Using JSON fallback history backend because node:sqlite initialization failed.'
+        )
+        return
       }
     }
 
-    this.backend = new JsonHistoryBackend(workspacePath)
+    this.logger.warn('[Main] HistoryStore node:sqlite unavailable, falling back to JSON.')
+    this.backend = new JsonHistoryBackend(
+      workspacePath,
+      'Using JSON fallback history backend because node:sqlite is unavailable.'
+    )
   }
 
   closeWorkspace(): void {
+    if (this.backend) {
+      this.logger.info('[Main] HistoryStore closing workspace backend.')
+    }
     this.backend?.close()
     this.backend = null
     this.currentWorkspacePath = null
@@ -282,7 +331,11 @@ export class HistoryStore {
     if (!this.backend) {
       return
     }
-    this.backend.append(normalizeHistoryEvent(event))
+    try {
+      this.backend.append(normalizeHistoryEvent(event))
+    } catch (error) {
+      this.logger.error('[Main] HistoryStore append failed:', error)
+    }
   }
 
   listSessionEvents(
@@ -293,13 +346,23 @@ export class HistoryStore {
     if (!this.backend) {
       return []
     }
-    return this.backend.listSessionEvents(terminalId, filter, limit)
+    try {
+      return this.backend.listSessionEvents(terminalId, filter, limit)
+    } catch (error) {
+      this.logger.error('[Main] HistoryStore listSessionEvents failed:', error)
+      return []
+    }
   }
 
   listWorkspaceFeed(limit = 100): MonitoringHistoryEvent[] {
     if (!this.backend) {
       return []
     }
-    return this.backend.listWorkspaceFeed(limit)
+    try {
+      return this.backend.listWorkspaceFeed(limit)
+    } catch (error) {
+      this.logger.error('[Main] HistoryStore listWorkspaceFeed failed:', error)
+      return []
+    }
   }
 }

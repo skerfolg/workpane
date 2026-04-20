@@ -60,7 +60,7 @@ export type TerminalAction =
   | { type: 'SPLIT_ROOT_AND_MOVE_TERMINAL'; terminalId: string; fromPanelId: string; direction: SplitDirection; insertBefore: boolean }
   | { type: 'SET_FOCUSED_PANEL'; panelId: string }
   | { type: 'UPDATE_RATIO'; splitId: string; newRatio: number }
-  | { type: 'APPLY_PRESET_LAYOUT'; layoutType: PresetLayoutType }
+  | { type: 'APPLY_PRESET_LAYOUT_TO_GROUP'; groupId: string; layoutType: PresetLayoutType }
   // Group-level actions (handled by outer reducer)
   | { type: 'CREATE_GROUP'; groupId: string; name: string; terminalId: string; terminalName: string }
   | { type: 'DELETE_GROUP'; groupId: string }

@@ -62,6 +62,44 @@ export function getAllLeaves(tree: LayoutNode): LeafNode[] {
   return [...getAllLeaves(tree.children[0]), ...getAllLeaves(tree.children[1])]
 }
 
+export function isPresetEligibleLayout(tree: LayoutNode): boolean {
+  return !getAllLeaves(tree).some((leaf) => leaf.browserIds.length > 0)
+}
+
+export function applyPresetLayoutToTree(
+  tree: LayoutNode,
+  layoutType: PresetLayoutType,
+  preferredActiveTerminalId: string | null
+): {
+  layoutTree: LayoutNode
+  terminalIds: string[]
+  activeTerminalId: string | null
+  focusedPanelId: PanelId
+} | null {
+  if (!isPresetEligibleLayout(tree)) {
+    return null
+  }
+
+  const terminalIds = getAllLeaves(tree).flatMap((leaf) => leaf.terminalIds)
+  const nextTree = createPresetLayout(layoutType, terminalIds)
+  const nextLeaves = getAllLeaves(nextTree)
+  const nextActiveTerminalId =
+    preferredActiveTerminalId && terminalIds.includes(preferredActiveTerminalId)
+      ? preferredActiveTerminalId
+      : terminalIds[0] ?? null
+  const focusedLeaf =
+    (nextActiveTerminalId
+      ? findLeafByTerminalId(nextTree, nextActiveTerminalId)
+      : null) ?? nextLeaves[0] ?? null
+
+  return {
+    layoutTree: nextTree,
+    terminalIds: nextLeaves.flatMap((leaf) => leaf.terminalIds),
+    activeTerminalId: nextActiveTerminalId,
+    focusedPanelId: focusedLeaf?.panelId ?? nextLeaves[0]?.panelId ?? generatePanelId()
+  }
+}
+
 // ---- Mutations (immutable) ----
 
 /**

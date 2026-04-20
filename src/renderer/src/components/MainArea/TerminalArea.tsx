@@ -3,7 +3,8 @@ import { Columns2, Rows2, Grid2x2 } from 'lucide-react'
 import { useTerminals } from '../../contexts/TerminalContext'
 import { useMonitoring, type MonitoringAggregate } from '../../contexts/MonitoringContext'
 import SplitLayoutRenderer from '../Terminal/SplitLayoutRenderer'
-import type { SplitDirection } from '../../types/terminal-layout'
+import type { PresetLayoutType, SplitDirection } from '../../types/terminal-layout'
+import { isGroupPresetEligible } from '../../utils/preset-layouts'
 
 type EdgeZone = 'top' | 'bottom' | 'left' | 'right' | null
 
@@ -25,9 +26,19 @@ function formatAggregateSummary(aggregate: MonitoringAggregate): string | null {
 }
 
 function TerminalArea(): React.JSX.Element {
-  const { layoutTree, applyPresetLayout, isDraggingTab, setDragState, splitRootAndMoveTerminal, groups, activeGroupId } = useTerminals()
+  const {
+    layoutTree,
+    applyPresetLayout,
+    isDraggingTab,
+    setDragState,
+    splitRootAndMoveTerminal,
+    groups,
+    activeGroupId
+  } = useTerminals()
   const { activeGroupAggregate } = useMonitoring()
-  const activeGroupName = groups.find(g => g.id === activeGroupId)?.name ?? ''
+  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null
+  const activeGroupName = activeGroup?.name ?? ''
+  const activeGroupPresetEligible = activeGroup ? isGroupPresetEligible(activeGroup) : false
   const aggregateSummary = formatAggregateSummary(activeGroupAggregate)
   const [edgeZone, setEdgeZone] = useState<EdgeZone>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -106,6 +117,42 @@ function TerminalArea(): React.JSX.Element {
     }
   }
 
+  const presetButtonStyle = (disabled = false): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'none',
+    border: 'none',
+    borderRadius: '3px',
+    color: disabled ? 'var(--color-text-disabled, #6b7280)' : 'var(--color-text-secondary)',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    padding: '4px',
+    flexShrink: 0,
+    opacity: disabled ? 0.55 : 1
+  })
+
+  const renderPresetButton = (
+    layoutType: PresetLayoutType,
+    title: string,
+    testId: string,
+    icon: React.ReactNode,
+    extraPadding?: string
+  ) => (
+    <button
+      type="button"
+      data-testid={testId}
+      disabled={!activeGroupPresetEligible}
+      onClick={() => applyPresetLayout(layoutType)}
+      title={activeGroupPresetEligible ? title : 'Presets are unavailable for groups with browser tabs'}
+      style={{
+        ...presetButtonStyle(!activeGroupPresetEligible),
+        ...(extraPadding ? { padding: extraPadding } : null)
+      }}
+    >
+      {icon}
+    </button>
+  )
+
   return (
     <div
       className="terminal-area"
@@ -150,42 +197,9 @@ function TerminalArea(): React.JSX.Element {
         <div style={{ flex: 1 }} />
 
         {/* Preset layout buttons */}
-        <button
-          onClick={() => applyPresetLayout('2col')}
-          title="2 Columns"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'none', border: 'none', borderRadius: '3px',
-            color: 'var(--color-text-secondary)', cursor: 'pointer',
-            padding: '4px', flexShrink: 0
-          }}
-        >
-          <Columns2 size={14} />
-        </button>
-        <button
-          onClick={() => applyPresetLayout('2row')}
-          title="2 Rows"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'none', border: 'none', borderRadius: '3px',
-            color: 'var(--color-text-secondary)', cursor: 'pointer',
-            padding: '4px', flexShrink: 0
-          }}
-        >
-          <Rows2 size={14} />
-        </button>
-        <button
-          onClick={() => applyPresetLayout('2x2')}
-          title="2x2 Grid"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'none', border: 'none', borderRadius: '3px',
-            color: 'var(--color-text-secondary)', cursor: 'pointer',
-            padding: '4px 8px 4px 4px', flexShrink: 0
-          }}
-        >
-          <Grid2x2 size={14} />
-        </button>
+        {renderPresetButton('2col', '2 Columns', 'terminal-preset-2col', <Columns2 size={14} />)}
+        {renderPresetButton('2row', '2 Rows', 'terminal-preset-2row', <Rows2 size={14} />)}
+        {renderPresetButton('2x2', '2x2 Grid', 'terminal-preset-2x2', <Grid2x2 size={14} />, '4px 8px 4px 4px')}
       </div>
 
       {/* Terminal content — recursive split layout with outer edge drop zones */}

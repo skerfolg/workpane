@@ -15,9 +15,23 @@ const workspaceStateBackups = new WeakMap<
   ElectronApplication,
   Map<string, { existed: boolean; content: string | null }>
 >()
+const workspaceHistoryBackups = new WeakMap<
+  ElectronApplication,
+  Map<string, { existed: boolean; content: Buffer | null }>
+>()
 
 function getWorkspaceStatePath(workspacePath: string): string {
   return path.join(workspacePath, '.workspace', 'state.json')
+}
+
+function getWorkspaceHistoryPaths(workspacePath: string): string[] {
+  const workspaceDir = path.join(workspacePath, '.workspace')
+  return [
+    path.join(workspaceDir, 'workpane-history.json'),
+    path.join(workspaceDir, 'workpane-history.sqlite'),
+    path.join(workspaceDir, 'workpane-history.sqlite-shm'),
+    path.join(workspaceDir, 'workpane-history.sqlite-wal')
+  ]
 }
 
 function ensureWorkspaceStateBackup(page: Page, workspacePath: string): void {
@@ -51,12 +65,45 @@ function ensureWorkspaceStateBackup(page: Page, workspacePath: string): void {
   })
 }
 
+function ensureWorkspaceHistoryBackups(page: Page, workspacePath: string): void {
+  const app = pageToApp.get(page)
+  if (!app) {
+    throw new Error('Missing Electron application handle for page-backed history backup')
+  }
+
+  let backups = workspaceHistoryBackups.get(app)
+  if (!backups) {
+    backups = new Map()
+    workspaceHistoryBackups.set(app, backups)
+  }
+
+  for (const historyPath of getWorkspaceHistoryPaths(workspacePath)) {
+    if (backups.has(historyPath)) {
+      continue
+    }
+
+    if (fs.existsSync(historyPath)) {
+      backups.set(historyPath, {
+        existed: true,
+        content: fs.readFileSync(historyPath)
+      })
+      continue
+    }
+
+    backups.set(historyPath, {
+      existed: false,
+      content: null
+    })
+  }
+}
+
 function writeWorkspaceStateFile(
   page: Page,
   workspacePath: string,
   state: Record<string, unknown>
 ): void {
   ensureWorkspaceStateBackup(page, workspacePath)
+  ensureWorkspaceHistoryBackups(page, workspacePath)
   const workspaceStatePath = getWorkspaceStatePath(workspacePath)
   fs.mkdirSync(path.dirname(workspaceStatePath), { recursive: true })
   fs.writeFileSync(workspaceStatePath, JSON.stringify(state), 'utf-8')
@@ -79,6 +126,25 @@ function restoreBackedUpWorkspaceStates(app: ElectronApplication): void {
   }
 
   workspaceStateBackups.delete(app)
+}
+
+function restoreBackedUpWorkspaceHistory(app: ElectronApplication): void {
+  const backups = workspaceHistoryBackups.get(app)
+  if (!backups) {
+    return
+  }
+
+  for (const [historyPath, backup] of backups.entries()) {
+    if (backup.existed) {
+      fs.mkdirSync(path.dirname(historyPath), { recursive: true })
+      fs.writeFileSync(historyPath, backup.content ?? Buffer.alloc(0))
+      continue
+    }
+
+    fs.rmSync(historyPath, { force: true })
+  }
+
+  workspaceHistoryBackups.delete(app)
 }
 
 function isClosedTargetError(error: unknown): boolean {
@@ -133,7 +199,7 @@ function removeDirWithRetry(targetPath: string, attempts = 5): void {
   }
 }
 
-export async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
+export async function launchApp(options: { env?: NodeJS.ProcessEnv } = {}): Promise<{ app: ElectronApplication; page: Page }> {
   const mainPath = path.join(__dirname, '../../../out/main/index.js')
   const isolatedAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'workpane-e2e-'))
 
@@ -141,6 +207,7 @@ export async function launchApp(): Promise<{ app: ElectronApplication; page: Pag
     args: [mainPath],
     env: {
       ...process.env,
+      ...options.env,
       NODE_ENV: 'test',
       APPDATA: isolatedAppData,
       LOCALAPPDATA: isolatedAppData,
@@ -157,7 +224,7 @@ export async function launchApp(): Promise<{ app: ElectronApplication; page: Pag
   return { app, page }
 }
 
-export async function closeApp(app: ElectronApplication): Promise<void> {
+export async function closeApp(app: ElectronApplication, options: { restoreWorkspaceArtifacts?: boolean } = {}): Promise<void> {
   try {
     await app.evaluate(({ app: electronApp }) => {
       electronApp.quit()
@@ -182,7 +249,10 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
       await app.close().catch(() => {})
     }
   } finally {
-    restoreBackedUpWorkspaceStates(app)
+    if (options.restoreWorkspaceArtifacts !== false) {
+      restoreBackedUpWorkspaceStates(app)
+      restoreBackedUpWorkspaceHistory(app)
+    }
     const isolatedAppData = appStoragePaths.get(app)
     if (isolatedAppData) {
       appStoragePaths.delete(app)
@@ -237,11 +307,16 @@ export async function emitRendererMonitoringClear(
  * Opens a known workspace through the preload bridge
  * and waits for the main app layout (activity bar) to appear.
  */
-export async function openRecentWorkspace(page: Page): Promise<void> {
+export async function openRecentWorkspace(
+  page: Page,
+  options?: { resetWorkspaceState?: boolean }
+): Promise<void> {
   // Wait for welcome screen first so the renderer is ready
   await page.waitForSelector('.welcome', { timeout: 15000 })
 
-  writeWorkspaceStateFile(page, E2E_WORKSPACE_PATH, {})
+  if (options?.resetWorkspaceState ?? true) {
+    writeWorkspaceStateFile(page, E2E_WORKSPACE_PATH, {})
+  }
 
   // Avoid flaky recent-workspace UI dependence in Electron smoke runs.
   await page.evaluate(async (workspacePath) => {

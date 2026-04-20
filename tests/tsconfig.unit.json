@@ -17,6 +17,9 @@
     "../src/main/llm/no-api-hint.ts",
     "../src/main/llm/provider-adapters.ts",
     "../src/renderer/src/contexts/monitoring-state.ts",
+    "../src/renderer/src/types/terminal-layout.ts",
+    "../src/renderer/src/utils/layout-tree.ts",
+    "../src/renderer/src/utils/preset-layouts.ts",
     "./e2e/helpers/gate-pack.ts",
     "./unit/**/*.ts"
   ]

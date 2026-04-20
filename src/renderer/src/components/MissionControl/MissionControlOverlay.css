@@ -51,6 +51,20 @@
   padding: 6px;
 }
 
+.mission-control__status {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.mission-control__status strong {
+  color: var(--text-1);
+}
+
 .mission-control__groups {
   display: flex;
   flex-direction: column;
@@ -65,10 +79,42 @@
 
 .mission-control__group-header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 12px;
   color: var(--text-2);
   font-size: 13px;
   font-weight: var(--fw-medium);
+}
+
+.mission-control__group-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mission-control__group-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mission-control__preset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.mission-control__preset-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .mission-control__matrix {

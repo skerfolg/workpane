@@ -21,7 +21,6 @@ import {
   closePanel as closePanelTree,
   moveTerminalToPanel as moveTerminalTree,
   updateRatio as updateRatioTree,
-  createPresetLayout,
   generatePanelId,
   getAllLeaves,
   findLeafByTerminalId,
@@ -29,6 +28,9 @@ import {
   serializeLayout,
   syncPanelCounter
 } from '../utils/layout-tree'
+import {
+  applyPresetLayoutToGroups,
+} from '../utils/preset-layouts'
 
 export interface TerminalTab {
   id: string
@@ -103,6 +105,7 @@ interface TerminalContextValue {
   splitRootAndMoveTerminal: (terminalId: string, fromPanelId: string, direction: SplitDirection, insertBefore: boolean) => void
   setFocusedPanel: (panelId: string) => void
   applyPresetLayout: (layoutType: PresetLayoutType) => void
+  applyPresetLayoutToGroup: (groupId: string, layoutType: PresetLayoutType) => void
   createGroup: () => Promise<void>
   deleteGroup: (groupId: string) => Promise<void>
   renameGroup: (groupId: string, name: string) => void
@@ -362,19 +365,6 @@ function innerReducer(state: GroupState, action: TerminalAction): GroupState {
       return { ...state, layoutTree: newTree }
     }
 
-    case 'APPLY_PRESET_LAYOUT': {
-      // Use only terminals from the active group's layout tree, not global state.terminals
-      const terminalIds = getAllLeaves(state.layoutTree).flatMap((l) => l.terminalIds)
-      const newTree = createPresetLayout(action.layoutType, terminalIds)
-      const allLeaves = getAllLeaves(newTree)
-      const newFocusedPanelId = allLeaves[0]?.panelId ?? state.focusedPanelId
-      return {
-        ...state,
-        layoutTree: newTree,
-        focusedPanelId: newFocusedPanelId
-      }
-    }
-
     default:
       return state
   }
@@ -546,6 +536,13 @@ function terminalGroupReducer(state: TerminalState, action: TerminalAction): Ter
 
     case 'SWITCH_GROUP': {
       return { ...state, activeGroupId: action.groupId }
+    }
+
+    case 'APPLY_PRESET_LAYOUT_TO_GROUP': {
+      return {
+        ...state,
+        groups: applyPresetLayoutToGroups(state.groups, action.groupId, action.layoutType)
+      }
     }
 
     case 'TOGGLE_GROUP_COLLAPSE': {
@@ -1212,7 +1209,11 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
   }, [])
 
   const applyPresetLayout = useCallback((layoutType: PresetLayoutType): void => {
-    dispatch({ type: 'APPLY_PRESET_LAYOUT', layoutType })
+    dispatch({ type: 'APPLY_PRESET_LAYOUT_TO_GROUP', groupId: stateRef.current.activeGroupId, layoutType })
+  }, [])
+
+  const applyPresetLayoutToGroup = useCallback((groupId: string, layoutType: PresetLayoutType): void => {
+    dispatch({ type: 'APPLY_PRESET_LAYOUT_TO_GROUP', groupId, layoutType })
   }, [])
 
   const updateSplitRatio = useCallback((splitId: string, newRatio: number): void => {
@@ -1354,6 +1355,7 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
     splitRootAndMoveTerminal,
     setFocusedPanel,
     applyPresetLayout,
+    applyPresetLayoutToGroup,
     createGroup,
     deleteGroup,
     renameGroup,
