@@ -30,7 +30,51 @@ export function isLlmProviderId(value: string): value is LlmProviderId {
 
 export type LlmCauseCategory = 'approval' | 'input-needed' | 'error' | 'unknown'
 
-export type LlmAnalysisSource = 'llm' | 'no-api'
+export type LlmAnalysisSource = 'llm' | 'no-api' | 'l0-vendor-event' // frozen-types-spec:allow
+
+export type L0Vendor = 'claude-code'
+
+const L0_VENDOR_IDS: readonly L0Vendor[] = ['claude-code']
+
+export function isL0Vendor(value: unknown): value is L0Vendor {
+  return typeof value === 'string' && (L0_VENDOR_IDS as readonly string[]).includes(value)
+}
+
+export type L0EventKind = 'approval-required' | 'tool-use-pending' | 'input-needed' | 'error'
+
+export interface L0Event {
+  terminalId: string
+  vendor: L0Vendor
+  schemaFingerprint: string
+  eventKind: L0EventKind
+  rawPayload: unknown
+  observedAt: number
+  category: LlmCauseCategory
+  summary: string
+  matchedText: string
+}
+
+export type L0Mode = 'inactive' | 'awaiting-first-event' | 'active' | 'degraded'
+
+export type L0DegradeReason =
+  | 'invariant-mismatch'
+  | 'unparseable-payload'
+  | 'consecutive-decode-errors'
+  | 'adapter-disabled'
+
+export interface L0Status {
+  terminalId: string
+  mode: L0Mode
+  vendor?: L0Vendor
+  fingerprint?: string
+  lastDegradeReason?: L0DegradeReason
+}
+
+export interface L0StatusChangedEvent {
+  terminalId: string
+  status: L0Status
+  timestamp: number
+}
 
 export interface LlmModelSummary {
   id: string
