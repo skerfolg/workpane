@@ -1,5 +1,6 @@
 import type { L0Event, L0Status, L0Vendor, SessionMonitoringState } from '../../shared/types'
 import type { IngestResult, L0Adapter } from './adapters/L0Adapter'
+import { deriveEventKey, EventDedupWindow, type EventKeySource } from './event-key'
 import { l0Telemetry } from './telemetry'
 
 export interface L0PipelineResult {
@@ -18,6 +19,13 @@ export class L0Pipeline {
   // RW-A: optional per-terminal adapter override. When absent, the default
   // adapter from the constructor is used (preserves existing callers).
   private readonly adapterByTerminalId = new Map<string, L0Adapter>()
+  // RW-C: cross-source dedup so hook + session-log cannot emit the same
+  // event twice. Window keyed by (terminalId, eventKey).
+  private readonly dedupWindow = new EventDedupWindow()
+  // RW-C: per-terminal source tag so we bump the right telemetry bucket
+  // when a duplicate is dropped. setAdapterFor sets this based on the
+  // adapter type; default adapter is 'stdout'.
+  private readonly sourceTagByTerminalId = new Map<string, EventKeySource>()
 
   constructor(adapter: L0Adapter, onMonitoringUpsert: (state: SessionMonitoringState) => void) {
     this.defaultAdapter = adapter
@@ -30,9 +38,12 @@ export class L0Pipeline {
    * hook server or session-log tailer that feeds the pipeline via ingest
    * with source-shaped payload objects. Default adapter is preserved for
    * terminals that have no override.
+   * `source` (RW-C) tags which side of A/E this override corresponds to
+   * so dedup telemetry is accurate when an event is dropped.
    */
-  setAdapterFor(terminalId: string, adapter: L0Adapter): void {
+  setAdapterFor(terminalId: string, adapter: L0Adapter, source: EventKeySource = 'hook'): void {
     this.adapterByTerminalId.set(terminalId, adapter)
+    this.sourceTagByTerminalId.set(terminalId, source)
     // Broadcast so listeners pick up any difference in the adapter's
     // initial getStatus snapshot (e.g. freshly constructed hook adapter
     // reports 'awaiting-first-event').
@@ -57,6 +68,7 @@ export class L0Pipeline {
       // through the pipeline boundary.
     }
     this.adapterByTerminalId.delete(terminalId)
+    this.sourceTagByTerminalId.delete(terminalId)
     this.lastBroadcastMode.delete(terminalId)
     this.broadcastStatus(terminalId)
   }
@@ -83,18 +95,33 @@ export class L0Pipeline {
    * Ingest raw input (adapter-specific shape: string chunk for stdout,
    * parsed payload object for hook/session-log). The bound adapter validates
    * and normalizes the input before emitting L0Events.
+   * `source` lets callers tell the dedup layer where this input came from
+   * (hook vs session-log vs stdout) so telemetry buckets are correct.
    */
-  ingest(terminalId: string, input: unknown, workspacePath: string): L0PipelineResult {
+  ingest(
+    terminalId: string,
+    input: unknown,
+    workspacePath: string,
+    source?: EventKeySource
+  ): L0PipelineResult {
     const vendor = this.vendorByTerminalId.get(terminalId)
     if (!vendor) {
       return { emittedEvents: 0, suppressApprovalDetector: false }
     }
+    const effectiveSource = source ?? this.sourceTagByTerminalId.get(terminalId) ?? 'stdout'
     const ingestStartedAt = performance.now()
     const result = this.adapterFor(terminalId).ingest(terminalId, input)
     if (result.kind === 'degrade') {
       l0Telemetry.recordDegrade(result.reason)
     }
-    const pipelineResult = this.handleResult(result, workspacePath, vendor, ingestStartedAt)
+    const pipelineResult = this.handleResult(
+      result,
+      workspacePath,
+      vendor,
+      ingestStartedAt,
+      terminalId,
+      effectiveSource
+    )
     this.broadcastStatus(terminalId)
     return pipelineResult
   }
@@ -111,6 +138,8 @@ export class L0Pipeline {
       this.adapterByTerminalId.delete(terminalId)
     }
     this.vendorByTerminalId.delete(terminalId)
+    this.sourceTagByTerminalId.delete(terminalId)
+    this.dedupWindow.clearTerminal(terminalId)
     this.lastBroadcastMode.delete(terminalId)
   }
 
@@ -167,7 +196,9 @@ export class L0Pipeline {
     result: IngestResult,
     workspacePath: string,
     vendor: L0Vendor,
-    ingestStartedAt: number
+    ingestStartedAt: number,
+    terminalId: string,
+    source: EventKeySource
   ): L0PipelineResult {
     if (result.kind === 'degrade') {
       return {
@@ -183,18 +214,27 @@ export class L0Pipeline {
       }
     }
 
+    // RW-C: filter out duplicates across sources before the monitoring
+    // callback fires. Dropped events bump the per-source counter so we
+    // can see which side arrived second.
+    const emittedEvents: L0Event[] = []
     for (const event of result.events) {
-      this.onMonitoringUpsert(this.toMonitoringState(event, workspacePath))
+      const { tier } = deriveEventKey(event, source)
+      const { key } = deriveEventKey(event, source)
+      if (this.dedupWindow.shouldEmit(terminalId, key)) {
+        emittedEvents.push(event)
+        this.onMonitoringUpsert(this.toMonitoringState(event, workspacePath))
+        l0Telemetry.recordDedupKeyTier(tier)
+      } else {
+        l0Telemetry.recordDedupDropped(source)
+      }
     }
-    // Record once per ingest call so the histogram is not skewed by per-event
-    // accumulation when multiple events come out of a single chunk
-    // (Code-reviewer MEDIUM: handleResult emit latency).
-    if (result.events.length > 0) {
+    if (emittedEvents.length > 0) {
       l0Telemetry.recordEventEmitted(vendor, performance.now() - ingestStartedAt)
     }
 
     return {
-      emittedEvents: result.events.length,
+      emittedEvents: emittedEvents.length,
       suppressApprovalDetector: result.suppressApprovalDetector
     }
   }
