@@ -201,6 +201,41 @@ export interface UpdaterAPI {
   check: () => Promise<void>
 }
 
+export interface L0PathStateShape {
+  hook_installed: boolean
+  hook_fires: boolean
+  session_log_accessible: boolean
+  session_log_latency_p95_ms: number | null
+  regex_pipeline_available: boolean
+}
+
+export interface L0PathDecisionShape {
+  selected: 'L0-A' | 'L0-E' | 'L1-regex' | 'NONE'
+  rationale: string
+  fallback_chain: string[]
+  realtime: boolean
+  precision: string
+  reason_not_lower_tier: string | null
+}
+
+export interface L0PathSnapshotShape {
+  decision: L0PathDecisionShape
+  state: L0PathStateShape
+  cc: {
+    kind: 'supported' | 'unsupported' | 'unknown' | 'not-installed' | 'detection-failed'
+    reason: string
+  }
+  sessionLogProjectDir?: string
+  probedAt: number
+}
+
+export interface L0API {
+  getPathSnapshot: () => Promise<L0PathSnapshotShape | null>
+  refreshPath: () => Promise<L0PathSnapshotShape>
+  onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => () => void
+  onPathProbeError: (callback: (data: { reason: string }) => void) => () => void
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -216,6 +251,7 @@ declare global {
     theme: ThemeAPI
     updater: UpdaterAPI
     browser: BrowserAPI
+    l0: L0API
     api: unknown
   }
 }

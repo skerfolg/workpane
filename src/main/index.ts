@@ -16,6 +16,7 @@ import { BrowserManager } from './browser-manager'
 import { McpBrowserHandler } from './mcp-browser-server'
 import { HistoryStore } from './history-store'
 import { CcStreamJsonAdapter } from './l0/adapters/cc-stream-json-adapter'
+import { L0Orchestrator } from './l0/l0-orchestrator'
 import { L0Pipeline } from './l0/pipeline'
 import * as path from 'path'
 import { LlmManager } from './llm/manager'
@@ -943,6 +944,28 @@ app.whenReady().then(() => {
     }
   })
   terminalManager.setL0Pipeline(l0Pipeline)
+
+  // Slice 2E — L0 orchestrator probe + IPC surface. The orchestrator only
+  // computes path-selector state; actual adapter swap at runtime is wired
+  // in a follow-up Slice 2 sub-task. Surface is ready for the 3-state
+  // Settings UI (Slice 2C/2D).
+  const l0Orchestrator = new L0Orchestrator()
+  void l0Orchestrator.refresh().catch((error) => {
+    // Detection is best-effort; failures fall through to L1 baseline.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('l0:path-probe-error', {
+        reason: error instanceof Error ? error.message : String(error)
+      })
+    }
+  })
+  l0Orchestrator.onChange((snapshot) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('l0:path-snapshot', snapshot)
+    }
+  })
+  ipcMain.handle('l0:get-path-snapshot', () => l0Orchestrator.getSnapshot())
+  ipcMain.handle('l0:refresh-path', async () => l0Orchestrator.refresh())
+
   const customPatterns = (settingsManager.get('notification.customPatterns') ?? []) as Array<{ name: string; pattern: string }>
   approvalDetector.setCustomPatterns(customPatterns)
 
