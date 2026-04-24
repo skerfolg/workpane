@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { _electron as electron, ElectronApplication, Page } from '@playwright/test'
 import path from 'path'
+import type { L0DegradeReason, L0Mode, L0Vendor, LlmAnalysisSource } from '../../../src/shared/types'
 
 const E2E_WORKSPACE_PATH =
   process.env.E2E_WORKSPACE_PATH ??
@@ -271,7 +272,7 @@ export async function emitRendererMonitoringUpsert(
     status?: 'attention-needed'
     category: 'approval' | 'input-needed' | 'error' | 'unknown'
     confidence: 'low' | 'medium' | 'high'
-    source: 'llm' | 'no-api'
+    source: LlmAnalysisSource
     summary: string
     timestamp?: number
   }
@@ -281,6 +282,34 @@ export async function emitRendererMonitoringUpsert(
     window.webContents.send('terminal:monitoring-upsert', {
       ...payload,
       status: payload.status ?? 'attention-needed',
+      timestamp: payload.timestamp ?? Date.now()
+    })
+  }, event)
+}
+
+export async function emitRendererL0StatusChanged(
+  app: ElectronApplication,
+  event: {
+    terminalId: string
+    mode: L0Mode
+    vendor?: L0Vendor
+    fingerprint?: string
+    lastDegradeReason?: L0DegradeReason
+    timestamp?: number
+  }
+): Promise<void> {
+  await app.evaluate(async ({ BrowserWindow }, payload) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    const status = {
+      terminalId: payload.terminalId,
+      mode: payload.mode,
+      vendor: payload.vendor,
+      fingerprint: payload.fingerprint,
+      lastDegradeReason: payload.lastDegradeReason
+    }
+    window.webContents.send('terminal:l0-status-changed', {
+      terminalId: payload.terminalId,
+      status,
       timestamp: payload.timestamp ?? Date.now()
     })
   }, event)
@@ -342,7 +371,7 @@ export async function invokeMonitoringTestUpsert(
     status?: 'attention-needed'
     category: 'approval' | 'input-needed' | 'error' | 'unknown'
     confidence: 'low' | 'medium' | 'high'
-    source: 'llm' | 'no-api'
+    source: LlmAnalysisSource
     summary: string
     timestamp?: number
   }
@@ -382,7 +411,7 @@ export async function invokeMonitoringTestTransition(
     reason?: 'write' | 'exit'
     category?: 'approval' | 'input-needed' | 'error' | 'unknown'
     confidence?: 'low' | 'medium' | 'high'
-    source?: 'llm' | 'no-api'
+    source?: LlmAnalysisSource
     summary?: string
     patternName?: string
     matchedText?: string

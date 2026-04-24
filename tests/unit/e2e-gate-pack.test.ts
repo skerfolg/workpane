@@ -28,3 +28,8 @@ test('deterministic Electron gate pack keeps supervision and terminal reveal reg
   assert.equal(DETERMINISTIC_ELECTRON_GATE_SPECS.includes('tests/e2e/slice4-global-chronology.spec.ts'), true)
   assert.equal(DETERMINISTIC_ELECTRON_GATE_SPECS.includes('tests/e2e/slice5-sidebar-queue.spec.ts'), true)
 })
+
+test('M1c L0 e2e specs are wired into the gate pack and package.json:21', () => {
+  assert.equal(DETERMINISTIC_ELECTRON_GATE_SPECS.includes('tests/e2e/l0-cc-stream-json.spec.ts'), true)
+  assert.equal(DETERMINISTIC_ELECTRON_GATE_SPECS.includes('tests/e2e/l0-degrade-fallback.spec.ts'), true)
+})

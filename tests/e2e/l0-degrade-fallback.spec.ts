@@ -1,0 +1,83 @@
+import { test, expect, Page } from '@playwright/test'
+import {
+  closeApp,
+  emitRendererL0StatusChanged,
+  launchApp,
+  resetWorkspaceStateFile,
+  WORKSPACE_PATH
+} from './helpers/electron'
+
+async function openWorkspaceWithSingleTerminal(page: Page, terminalId: string): Promise<void> {
+  await resetWorkspaceStateFile(page, {
+    version: 2,
+    editorTabs: [],
+    activeEditorFilePath: null,
+    terminals: [{ id: terminalId, name: 'Claude Code' }],
+    groups: [
+      {
+        id: 'group-1',
+        name: 'Group 1',
+        layoutTree: {
+          type: 'leaf',
+          panelId: 'panel-1',
+          terminalIds: [terminalId],
+          browserIds: [],
+          activeTerminalId: terminalId
+        },
+        terminalIds: [terminalId],
+        activeTerminalId: terminalId,
+        focusedPanelId: 'panel-1',
+        collapsed: false
+      }
+    ],
+    activeGroupId: 'group-1'
+  })
+  try {
+    await page.waitForSelector('.welcome', { timeout: 15000 })
+  } catch {
+    // Welcome paint can be skipped under fast launches.
+  }
+  await page.evaluate(async (workspacePath) => {
+    await window.workspace.openPath(workspacePath)
+  }, WORKSPACE_PATH)
+  await page.waitForSelector('.activity-bar', { timeout: 15000 })
+  await page.waitForTimeout(1000)
+}
+
+test.describe('M1c L0 degrade fallback', () => {
+  test('DP-2 badge switches to heuristic-only on invariant mismatch', async () => {
+    test.setTimeout(120000)
+    const { app, page } = await launchApp()
+
+    try {
+      const terminalId = 'terminal-cc-degrade'
+      await openWorkspaceWithSingleTerminal(page, terminalId)
+
+      const badge = page.locator('[data-testid="l0-status-badge"]')
+
+      // Baseline: active L0 session.
+      await emitRendererL0StatusChanged(app, {
+        terminalId,
+        mode: 'active',
+        vendor: 'claude-code',
+        fingerprint: 'stable-fingerprint'
+      })
+      await expect(badge).toBeVisible({ timeout: 5000 })
+      await expect(badge).toHaveAttribute('data-l0-mode', 'active')
+
+      // Schema changed — invariant check fails, session degrades permanently.
+      await emitRendererL0StatusChanged(app, {
+        terminalId,
+        mode: 'degraded',
+        vendor: 'claude-code',
+        fingerprint: 'stable-fingerprint',
+        lastDegradeReason: 'invariant-mismatch'
+      })
+      await expect(badge).toHaveAttribute('data-l0-mode', 'degraded')
+      await expect(badge).toContainText('heuristic only')
+      await expect(badge).toHaveAttribute('title', /reason: invariant-mismatch/)
+    } finally {
+      await closeApp(app)
+    }
+  })
+})

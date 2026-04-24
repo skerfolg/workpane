@@ -1,4 +1,5 @@
 import { test, expect, ElectronApplication, Page } from '@playwright/test'
+import type { LlmAnalysisSource } from '../../src/shared/types'
 import {
   closeApp,
   emitRendererMonitoringClear,
@@ -98,7 +99,7 @@ async function setGroupCollapsed(page: Page, groupName: string, collapsed: boole
 async function sendAttentionNeeded(
   app: ElectronApplication,
   terminalId: string,
-  source: 'llm' | 'no-api' = 'llm'
+  source: LlmAnalysisSource = 'llm'
 ): Promise<void> {
   await emitRendererMonitoringUpsert(app, {
     terminalId,

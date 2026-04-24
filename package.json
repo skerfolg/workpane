@@ -17,8 +17,9 @@
     "build:linux": "npm run build && electron-builder --linux",
     "test:unit": "tsc -p tests/tsconfig.unit.json && node --test .tmp-tests/tests/unit/*.js",
     "test:unit:llm": "tsc -p tests/tsconfig.unit.json && node --test .tmp-tests/tests/unit/llm-logic.test.js",
+    "test:perf": "tsc -p tests/tsconfig.perf.json && node --test .tmp-tests/tests/perf/*.js",
     "test:e2e": "npm run test:e2e:full",
-    "test:e2e:gate": "playwright test --project electron --workers=1 --timeout=120000 tests/e2e/app-launch.spec.ts tests/e2e/shell-supervision.spec.ts tests/e2e/explorer-file-open.spec.ts tests/e2e/search-surviving-scopes.spec.ts tests/e2e/language-settings.spec.ts tests/e2e/llm-settings.spec.ts tests/e2e/terminal-file-open.spec.ts tests/e2e/slice2-sidebar.spec.ts tests/e2e/slice3-transition-log.spec.ts tests/e2e/slice4-global-chronology.spec.ts tests/e2e/slice5-sidebar-queue.spec.ts",
+    "test:e2e:gate": "playwright test --project electron --workers=1 --timeout=120000 tests/e2e/app-launch.spec.ts tests/e2e/shell-supervision.spec.ts tests/e2e/explorer-file-open.spec.ts tests/e2e/search-surviving-scopes.spec.ts tests/e2e/language-settings.spec.ts tests/e2e/llm-settings.spec.ts tests/e2e/terminal-file-open.spec.ts tests/e2e/slice2-sidebar.spec.ts tests/e2e/slice3-transition-log.spec.ts tests/e2e/slice4-global-chronology.spec.ts tests/e2e/slice5-sidebar-queue.spec.ts tests/e2e/l0-cc-stream-json.spec.ts tests/e2e/l0-degrade-fallback.spec.ts",
     "test:e2e:full": "playwright test --workers=1",
     "test:e2e:live-provider": "playwright test --project electron --workers=1 --timeout=120000 tests/e2e/llm-live-provider.spec.ts",
     "test:e2e:ui": "playwright test --ui"

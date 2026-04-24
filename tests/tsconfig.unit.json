@@ -12,6 +12,7 @@
   },
   "include": [
     "../src/shared/types.ts",
+    "../src/main/l0/**/*.ts",
     "../src/main/llm/fallback-chain.ts",
     "../src/main/llm/manager.ts",
     "../src/main/llm/no-api-hint.ts",
