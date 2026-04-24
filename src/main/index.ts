@@ -64,6 +64,10 @@ const mcpBrowserHandler = new McpBrowserHandler(browserManager)
 apiServer.setMcpBrowserHandler(mcpBrowserHandler)
 const crashRecovery = new CrashRecovery()
 let mainWindow: BrowserWindow | null = null
+// RW-B/E: hoisted so before-quit can reach them for explicit dispose
+// (code-reviewer MEDIUM). Assigned once inside app.whenReady().
+let l0OrchestratorRef: L0Orchestrator | null = null
+let tailerPoolRef: SessionLogTailerPool | null = null
 const monitoredTerminals = new Map<string, SessionMonitoringState>()
 const monitoringTransitionSequences = new Map<string, number>()
 
@@ -954,6 +958,7 @@ app.whenReady().then(() => {
   // Kept in-scope so the callbacks close over these instances.
   const hookServersByTerminal = new Map<string, HookServer>()
   const tailerPool = new SessionLogTailerPool()
+  tailerPoolRef = tailerPool
   const tailerHandles = new Map<string, { release: () => void }>()
 
   terminalManager.setL0RuntimeHooks({
@@ -1073,6 +1078,7 @@ app.whenReady().then(() => {
   // in a follow-up Slice 2 sub-task. Surface is ready for the 3-state
   // Settings UI (Slice 2C/2D).
   const l0Orchestrator = new L0Orchestrator()
+  l0OrchestratorRef = l0Orchestrator
   // RW-E: evidence-guarded stale check runs every 20s so a silent hook
   // with active session-log traffic triggers a downgrade without any
   // direct user input.
@@ -1144,6 +1150,16 @@ app.on('before-quit', () => {
   terminalManager.dispose()
   watcherManager.stop()
   apiServer.stop()
+  // RW-B/E cleanup (code-reviewer MEDIUM): terminalManager.dispose()
+  // cascades into per-terminal HookServer and tailer handle releases,
+  // but the orchestrator's stale-check timer + pool module-level state
+  // still need explicit teardown.
+  try {
+    l0OrchestratorRef?.dispose()
+  } catch {
+    // Best-effort cleanup on shutdown.
+  }
+  tailerPoolRef?.dispose().catch(() => undefined)
 })
 
 // --- Global error handlers for main process diagnostics ---

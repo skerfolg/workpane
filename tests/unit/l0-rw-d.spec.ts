@@ -96,7 +96,7 @@ async function runBridge(options: {
 }): Promise<{ exitCode: number; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn('node', [BRIDGE_PATH], {
-      env: { ...process.env, WORKPANE_HOOK_REGISTRY: options.registryPath },
+      env: { ...process.env, NODE_ENV: 'test', WORKPANE_HOOK_REGISTRY: options.registryPath },
       stdio: ['pipe', 'pipe', 'pipe']
     })
     let stderr = ''
@@ -255,7 +255,7 @@ test('cc-bridge — malformed JSON stdin exits 0 without dispatching', { skip: !
     )
 
     const child = spawn('node', [BRIDGE_PATH], {
-      env: { ...process.env, WORKPANE_HOOK_REGISTRY: registryPath },
+      env: { ...process.env, NODE_ENV: 'test', WORKPANE_HOOK_REGISTRY: registryPath },
       stdio: ['pipe', 'pipe', 'pipe']
     })
     child.stdin?.end('{broken json')

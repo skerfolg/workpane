@@ -255,8 +255,7 @@ export class L0Pipeline {
     // can see which side arrived second.
     const emittedEvents: L0Event[] = []
     for (const event of result.events) {
-      const { tier } = deriveEventKey(event, source)
-      const { key } = deriveEventKey(event, source)
+      const { tier, key } = deriveEventKey(event, source)
       if (this.dedupWindow.shouldEmit(terminalId, key)) {
         emittedEvents.push(event)
         this.onMonitoringUpsert(this.toMonitoringState(event, workspacePath))

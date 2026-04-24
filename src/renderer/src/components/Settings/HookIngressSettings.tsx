@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { L0PathSnapshotShape } from '../../../../preload/index'
+import type { L0PathSnapshotShape } from '../../../../preload/types'
 
 /**
  * Hook ingress settings panel — Slice 2C.
@@ -320,12 +320,12 @@ export function HookIngressSettings(): React.JSX.Element {
               </thead>
               <tbody>
                 {perTerminal.map((snap) => {
-                  const tier = (snap.decision.selected ?? 'NONE') as TierKind
-                  const copy = BADGE_COPY[tier] ?? BADGE_COPY.NONE
+                  const snapTier = (snap.decision.selected ?? 'NONE') as TierKind
+                  const snapCopy = BADGE_COPY[snapTier] ?? BADGE_COPY.NONE
                   return (
                     <tr key={snap.terminalId ?? 'global'} style={{ borderTop: '1px solid #222' }}>
                       <td style={{ padding: '4px' }}>{snap.terminalId ?? '(global)'}</td>
-                      <td style={{ padding: '4px', color: copy.color }}>{copy.label}</td>
+                      <td style={{ padding: '4px', color: snapCopy.color }}>{snapCopy.label}</td>
                       <td style={{ padding: '4px', color: '#888' }}>{snap.decision.rationale}</td>
                     </tr>
                   )

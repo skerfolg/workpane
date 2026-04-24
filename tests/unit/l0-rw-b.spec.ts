@@ -371,6 +371,65 @@ test('HookServer — cwd match captures session_id and subsequent mismatched ses
   }
 })
 
+test('HookServer — SessionEnd of captured session releases binding so a new SessionStart can take over', { skip: !canRunSocketTests }, async () => {
+  const dir = scratchDir()
+  const sockPath = path.join(dir, 'hook.sock')
+  const tokenPath = path.join(dir, 'token')
+  const server = new HookServer({
+    terminalId: 't',
+    socketPath: sockPath,
+    tokenFilePath: tokenPath,
+    tokenOverride: 'r'.repeat(64),
+    workspacePath: '/my/workspace'
+  })
+  try {
+    await server.start()
+    const client = net.createConnection(sockPath)
+    await new Promise((r) => client.once('connect', r))
+    await sendFrame(client, { auth: 'r'.repeat(64) })
+    await sendFrame(client, { hook_event_name: 'SessionStart', cwd: '/my/workspace', session_id: 'sess-1' })
+    assert.equal(server._capturedSessionIdForTest, 'sess-1')
+    await sendFrame(client, { hook_event_name: 'SessionEnd', cwd: '/my/workspace', session_id: 'sess-1' })
+    assert.equal(server._capturedSessionIdForTest, null, 'SessionEnd release cleared binding')
+    await sendFrame(client, { hook_event_name: 'SessionStart', cwd: '/my/workspace', session_id: 'sess-2' })
+    assert.equal(server._capturedSessionIdForTest, 'sess-2', 'new session captured after release')
+    client.end()
+  } finally {
+    await server.dispose()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('HookServer — lifecycle frame before any SessionStart does not lock the binding', { skip: !canRunSocketTests }, async () => {
+  const dir = scratchDir()
+  const sockPath = path.join(dir, 'hook.sock')
+  const tokenPath = path.join(dir, 'token')
+  const server = new HookServer({
+    terminalId: 't',
+    socketPath: sockPath,
+    tokenFilePath: tokenPath,
+    tokenOverride: 'q'.repeat(64),
+    workspacePath: '/my/workspace'
+  })
+  try {
+    await server.start()
+    const client = net.createConnection(sockPath)
+    await new Promise((r) => client.once('connect', r))
+    await sendFrame(client, { auth: 'q'.repeat(64) })
+    // A rogue UserPromptSubmit with a fake session_id arrives before the
+    // real SessionStart. It must not lock the binding to that fake id,
+    // otherwise a race could DoS the real session.
+    await sendFrame(client, { hook_event_name: 'UserPromptSubmit', cwd: '/my/workspace', session_id: 'rogue' })
+    assert.equal(server._capturedSessionIdForTest, null, 'non-SessionStart does not capture')
+    await sendFrame(client, { hook_event_name: 'SessionStart', cwd: '/my/workspace', session_id: 'real' })
+    assert.equal(server._capturedSessionIdForTest, 'real')
+    client.end()
+  } finally {
+    await server.dispose()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('HookServer — no workspacePath means no cwd filter (back-compat)', { skip: !canRunSocketTests }, async () => {
   const dir = scratchDir()
   const sockPath = path.join(dir, 'hook.sock')

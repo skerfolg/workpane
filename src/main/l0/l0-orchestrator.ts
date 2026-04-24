@@ -308,7 +308,9 @@ export class L0Orchestrator {
       if (options.hookFiresObserved !== undefined) {
         merged.hookFiresObserved = options.hookFiresObserved
       } else if (this.hookFiresOverride.has(terminalId)) {
-        merged.hookFiresObserved = this.hookFiresOverride.get(terminalId)!
+        // Map values are always boolean by construction; the `?? false`
+        // keeps the type narrow without a non-null assertion.
+        merged.hookFiresObserved = this.hookFiresOverride.get(terminalId) ?? false
       } else if (this.hookObservedTerminals.has(terminalId)) {
         merged.hookFiresObserved = true
       }

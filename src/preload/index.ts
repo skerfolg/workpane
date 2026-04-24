@@ -1,14 +1,12 @@
 import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { L0PathSnapshotShape } from './index'
+import type { L0PathSnapshotShape } from './types'
 import type {
   ApprovalDetectedEvent,
   L0Status,
   L0StatusChangedEvent,
   L0Vendor,
   ManualTaskRecord,
-  MonitoringHistoryEvent,
-  MonitoringHistoryStoreStatus,
   MonitoringTimelineFilter,
   SessionMonitoringClearEvent,
   SessionMonitoringTransitionEvent,

@@ -38,10 +38,14 @@ function runtimeDir() {
 }
 
 function registryPath() {
-  return (
-    process.env.WORKPANE_HOOK_REGISTRY ||
-    path.join(runtimeDir(), 'workpane-hook-registry.json')
-  )
+  // The WORKPANE_HOOK_REGISTRY override is intended for unit tests only;
+  // honoring it in production would let an attacker with env-var control
+  // redirect the bridge to a rogue registry and exfiltrate auth tokens.
+  // Gate the override behind NODE_ENV=test (security-reviewer MEDIUM).
+  if (process.env.NODE_ENV === 'test' && process.env.WORKPANE_HOOK_REGISTRY) {
+    return process.env.WORKPANE_HOOK_REGISTRY
+  }
+  return path.join(runtimeDir(), 'workpane-hook-registry.json')
 }
 
 function logPath() {
@@ -63,10 +67,17 @@ function readStdin() {
     let tooBig = false
     process.stdin.setEncoding('utf8')
     process.stdin.on('data', (chunk) => {
-      buffer += chunk
-      if (Buffer.byteLength(buffer) > MAX_STDIN_BYTES) {
-        tooBig = true
+      if (tooBig) {
+        // security-reviewer LOW: stop accumulating once we have crossed
+        // the cap so a single oversized chunk cannot push us into
+        // hundreds of MB before the flag is checked.
+        return
       }
+      if (Buffer.byteLength(buffer) + Buffer.byteLength(chunk) > MAX_STDIN_BYTES) {
+        tooBig = true
+        return
+      }
+      buffer += chunk
     })
     process.stdin.on('end', () => resolve({ raw: buffer, tooBig }))
     process.stdin.on('error', () => resolve({ raw: buffer, tooBig }))
@@ -175,6 +186,8 @@ async function main() {
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    log(`unexpected error: ${error.stack || error.message}`)
+    // Guard against non-Error throw values (code-reviewer LOW).
+    const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error)
+    log(`unexpected error: ${message}`)
     process.exit(0)
   })

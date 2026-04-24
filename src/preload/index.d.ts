@@ -201,50 +201,15 @@ export interface UpdaterAPI {
   check: () => Promise<void>
 }
 
-export interface L0PathStateShape {
-  hook_installed: boolean
-  hook_fires: boolean
-  session_log_accessible: boolean
-  session_log_latency_p95_ms: number | null
-  regex_pipeline_available: boolean
-}
-
-export interface L0PathDecisionShape {
-  selected: 'L0-A' | 'L0-E' | 'L1-regex' | 'NONE'
-  rationale: string
-  fallback_chain: string[]
-  realtime: boolean
-  precision: string
-  reason_not_lower_tier: string | null
-}
-
-export interface L0PathSnapshotShape {
-  decision: L0PathDecisionShape
-  state: L0PathStateShape
-  cc: {
-    kind: 'supported' | 'unsupported' | 'unknown' | 'not-installed' | 'detection-failed'
-    reason: string
-  }
-  sessionLogProjectDir?: string
-  probedAt: number
-}
-
-export interface L0HookInstallResult {
-  kind:
-    | 'installed'
-    | 'already-installed'
-    | 'uninstalled'
-    | 'no-op-not-installed'
-    | 'abort-parse-error'
-    | 'abort-verify-fail'
-    | 'abort-io-error'
-  reason?: string
-  backupPath?: string
-  appliedAt?: number
-  restoredAt?: number
-  restored?: boolean
-  stage?: 'precheck' | 'backup' | 'write' | 'rename' | 'verify'
-}
+export type {
+  L0PathStateShape,
+  L0PathDecisionShape,
+  L0PathSnapshotShape,
+  L0CcDetectionShape,
+  L0CcVersionShape,
+  L0HookInstallResult
+} from './types'
+import type { L0PathSnapshotShape, L0HookInstallResult } from './types'
 
 export interface L0API {
   getPathSnapshot: () => Promise<L0PathSnapshotShape | null>

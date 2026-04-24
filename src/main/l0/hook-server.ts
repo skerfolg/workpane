@@ -335,21 +335,28 @@ export class HookServer {
 
     if (frameSessionId) {
       if (this.capturedSessionId === null) {
-        // Capture on first SessionStart for this terminal; other lifecycle
-        // events are also acceptable first arrivals since CC may not
-        // emit SessionStart in every configuration.
-        this.capturedSessionId = frameSessionId
-      } else if (this.capturedSessionId !== frameSessionId) {
-        // SessionEnd of the captured id releases the binding so a new
-        // session in the same terminal can take over.
-        if (hookEvent === 'SessionEnd' && this.capturedSessionId === frameSessionId) {
-          this.capturedSessionId = null
-        } else {
-          this.filteredSessionMismatchCount += 1
-          this.emitter.emit('filtered', { reason: 'session_id_mismatch', payload: frame })
-          return false
+        // Capture only on an explicit SessionStart so a rogue local
+        // process that already holds our token cannot race a fake
+        // lifecycle event and lock out the real CC binding
+        // (security-reviewer MEDIUM 2). Lifecycle messages before the
+        // first SessionStart are allowed through because they carry no
+        // lock consequence.
+        if (hookEvent === 'SessionStart') {
+          this.capturedSessionId = frameSessionId
         }
+      } else if (this.capturedSessionId !== frameSessionId) {
+        // A different session_id arrived while we still have a prior
+        // one captured. Drop it outright — the SessionEnd-release case
+        // is handled below only for the captured session_id itself.
+        this.filteredSessionMismatchCount += 1
+        this.emitter.emit('filtered', { reason: 'session_id_mismatch', payload: frame })
+        return false
       }
+
+      // Release on SessionEnd of the captured session so a fresh CC
+      // session in the same terminal can re-bind. Code-reviewer CRIT:
+      // previously this lived inside the `capturedSessionId !== frameSessionId`
+      // branch which made it dead code.
       if (hookEvent === 'SessionEnd' && this.capturedSessionId === frameSessionId) {
         this.capturedSessionId = null
       }

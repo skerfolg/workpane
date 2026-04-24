@@ -44,17 +44,35 @@ function defaultRegistryPath(): string {
   return path.join(runtime, 'workpane-hook-registry.json')
 }
 
+function isHookRegistryEntry(value: unknown): value is HookRegistryEntry {
+  if (typeof value !== 'object' || value === null) return false
+  const e = value as Record<string, unknown>
+  return (
+    typeof e.pid === 'number' &&
+    typeof e.terminalId === 'string' &&
+    typeof e.socketPath === 'string' &&
+    typeof e.tokenPath === 'string' &&
+    typeof e.workspacePath === 'string' &&
+    typeof e.startedAt === 'number'
+  )
+}
+
+function isRegistryFile(value: unknown): value is RegistryFile {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Record<string, unknown>
+  if (candidate.version !== 1) return false
+  if (!Array.isArray(candidate.entries)) return false
+  return candidate.entries.every(isHookRegistryEntry)
+}
+
 function readRegistryFile(registryPath: string): RegistryFile {
   try {
     const raw = fs.readFileSync(registryPath, 'utf8')
-    const parsed = JSON.parse(raw) as unknown
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      (parsed as RegistryFile).version === 1 &&
-      Array.isArray((parsed as RegistryFile).entries)
-    ) {
-      return parsed as RegistryFile
+    const parsed: unknown = JSON.parse(raw)
+    // typescript-reviewer MEDIUM: run the guard fully before casting so
+    // a future RegistryFile field addition cannot be silently accepted.
+    if (isRegistryFile(parsed)) {
+      return parsed
     }
   } catch {
     // Missing file / corrupt JSON → start fresh
