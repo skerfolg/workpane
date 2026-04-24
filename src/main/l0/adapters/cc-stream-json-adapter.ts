@@ -48,7 +48,12 @@ function safeParse(rawLine: string): unknown | null {
   }
 }
 
-function toL0Events(
+/**
+ * Exported so the Option E session-log adapter can reuse the same payload
+ * → L0Event extraction without duplicating the tool-use / error / result
+ * shape detection. Slice 1C depends on this.
+ */
+export function toL0Events(
   terminalId: string,
   payload: Record<string, unknown>,
   fingerprint: string
