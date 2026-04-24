@@ -1,0 +1,284 @@
+import crypto from 'node:crypto'
+import { EventEmitter } from 'node:events'
+import fs from 'node:fs'
+import net from 'node:net'
+import os from 'node:os'
+import path from 'node:path'
+
+/**
+ * Hook IPC server — Slice 1B (Option A primary path).
+ *
+ * Listens on a per-WP-session Unix domain socket (macOS/Linux) or named
+ * pipe (Windows) and accepts newline-delimited JSON hook payloads from
+ * Claude Code's PreToolUse / PostToolUse / Session* hooks.
+ *
+ * Authentication model (per Plan v3 Slice 1B token spec):
+ *   1. 256-bit token generated at WP app launch (crypto.randomBytes(32))
+ *   2. Token written to a user-only file (chmod 0o600 on POSIX, default
+ *      user-scoped DACL on Windows) at a deterministic path so the hook
+ *      script can find it
+ *   3. Each connection's first line must be {"auth": "<token>"}
+ *   4. Wrong / missing auth → connection dropped, counter bumped
+ *
+ * Security hardening still deferred to Security-reviewer pass:
+ *   - Windows named pipe explicit DACL (node's net.Server does not
+ *     expose the security descriptor; current-user default is used)
+ *   - Rate-limit backoff on repeated auth failures
+ *   - Token rotation on suspicious activity
+ *
+ * This module is intentionally I/O-only. The adapter (CcHookAdapter)
+ * lives separately and stays pure, so the full Option A flow is:
+ *   hook-script → hook-server (this) → pipeline.ingest() → CcHookAdapter
+ *     → L0Event → pipeline broadcast → DP-2 badge
+ */
+
+export interface HookServerEvents {
+  payload: [{ terminalId: string; payload: Record<string, unknown> }]
+  /** Emitted when a connection fails auth or sends a malformed frame. */
+  'auth-failure': [{ reason: string; remoteAddress?: string }]
+  listening: [{ socketPath: string }]
+  error: [Error]
+}
+
+export interface HookServerOptions {
+  /** Terminal id this server instance is bound to. */
+  terminalId: string
+  /** Override the socket path (tests). */
+  socketPath?: string
+  /** Override the token file path (tests). */
+  tokenFilePath?: string
+  /** Override the token (tests only — skips generation). */
+  tokenOverride?: string
+  /** Maximum frame size per message (bytes). Defaults to 64 KB. */
+  maxFrameBytes?: number
+}
+
+const DEFAULT_MAX_FRAME_BYTES = 64 * 1024
+const TOKEN_BYTES = 32 // 256-bit
+
+type Emitter = EventEmitter & {
+  on<E extends keyof HookServerEvents>(
+    event: E,
+    listener: (...args: HookServerEvents[E]) => void
+  ): Emitter
+  emit<E extends keyof HookServerEvents>(event: E, ...args: HookServerEvents[E]): boolean
+}
+
+function defaultSocketPath(terminalId: string): string {
+  if (process.platform === 'win32') {
+    return `\\\\.\\pipe\\workpane-hook-${process.pid}-${terminalId}`
+  }
+  const runtime = process.env.XDG_RUNTIME_DIR ?? os.tmpdir()
+  return path.join(runtime, `workpane-hook-${process.pid}-${terminalId}.sock`)
+}
+
+function defaultTokenFilePath(terminalId: string): string {
+  if (process.platform === 'win32') {
+    const base = process.env.APPDATA ?? os.tmpdir()
+    return path.join(base, 'WorkPane', 'hooks', `.token-${process.pid}-${terminalId}`)
+  }
+  const runtime = process.env.XDG_RUNTIME_DIR ?? os.tmpdir()
+  return path.join(runtime, `workpane-hook-${process.pid}-${terminalId}.token`)
+}
+
+export class HookServer {
+  private readonly emitter: Emitter = new EventEmitter() as Emitter
+  private readonly socketPath: string
+  private readonly tokenFilePath: string
+  private readonly maxFrameBytes: number
+  private readonly token: string
+  private readonly terminalId: string
+  private server: net.Server | null = null
+  private disposed = false
+  private authFailureCount = 0
+
+  constructor(options: HookServerOptions) {
+    this.terminalId = options.terminalId
+    this.socketPath = options.socketPath ?? defaultSocketPath(options.terminalId)
+    this.tokenFilePath = options.tokenFilePath ?? defaultTokenFilePath(options.terminalId)
+    this.maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES
+    this.token = options.tokenOverride ?? crypto.randomBytes(TOKEN_BYTES).toString('hex')
+  }
+
+  on<E extends keyof HookServerEvents>(event: E, listener: (...args: HookServerEvents[E]) => void): this {
+    this.emitter.on(event, listener)
+    return this
+  }
+
+  off<E extends keyof HookServerEvents>(event: E, listener: (...args: HookServerEvents[E]) => void): this {
+    this.emitter.off(event, listener)
+    return this
+  }
+
+  /**
+   * Start listening. Writes the token file with user-only permissions
+   * and binds the socket / named pipe. Caller is responsible for
+   * instructing the hook script to read the token file.
+   */
+  async start(): Promise<{ socketPath: string; tokenFilePath: string }> {
+    if (this.disposed) {
+      throw new Error('HookServer: cannot start after dispose()')
+    }
+    if (this.server) {
+      return { socketPath: this.socketPath, tokenFilePath: this.tokenFilePath }
+    }
+
+    this.writeTokenFile()
+    await this.cleanupStaleSocket()
+
+    const server = net.createServer((socket) => this.handleConnection(socket))
+    this.server = server
+
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(this.socketPath, () => {
+        server.removeListener('error', reject)
+        resolve()
+      })
+    })
+
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(this.socketPath, 0o600)
+      } catch {
+        // Best effort; on some filesystems chmod is a no-op
+      }
+    }
+
+    this.emitter.emit('listening', { socketPath: this.socketPath })
+    return { socketPath: this.socketPath, tokenFilePath: this.tokenFilePath }
+  }
+
+  async dispose(): Promise<void> {
+    this.disposed = true
+    const server = this.server
+    this.server = null
+    if (server) {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve())
+      })
+    }
+    await this.cleanupStaleSocket()
+    try {
+      fs.rmSync(this.tokenFilePath, { force: true })
+    } catch {
+      // Best effort
+    }
+  }
+
+  /** Test-only: inspect auth-failure counter. */
+  get _authFailureCountForTest(): number {
+    return this.authFailureCount
+  }
+
+  /** Test-only: read the generated token. */
+  get _tokenForTest(): string {
+    return this.token
+  }
+
+  private writeTokenFile(): void {
+    const dir = path.dirname(this.tokenFilePath)
+    fs.mkdirSync(dir, { recursive: true })
+    // Write with mode 0o600 so only the current user can read the token.
+    // Windows NTFS honours default DACL (current user + admins + system).
+    const fd = fs.openSync(this.tokenFilePath, 'w', 0o600)
+    try {
+      fs.writeSync(fd, this.token)
+    } finally {
+      fs.closeSync(fd)
+    }
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(this.tokenFilePath, 0o600)
+      } catch {
+        // Best effort
+      }
+    }
+  }
+
+  private async cleanupStaleSocket(): Promise<void> {
+    if (process.platform === 'win32') {
+      // Named pipes are not filesystem entries; nothing to clean up.
+      return
+    }
+    try {
+      await fs.promises.unlink(this.socketPath)
+    } catch (error: unknown) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code && code !== 'ENOENT') {
+        // Swallow and let listen() surface the bind error
+      }
+    }
+  }
+
+  private handleConnection(socket: net.Socket): void {
+    let buffer = ''
+    let authenticated = false
+
+    socket.setEncoding('utf8')
+
+    const dropWithReason = (reason: string): void => {
+      this.authFailureCount += 1
+      this.emitter.emit('auth-failure', { reason, remoteAddress: socket.remoteAddress })
+      socket.destroy()
+    }
+
+    socket.on('data', (chunk: string | Buffer) => {
+      buffer += typeof chunk === 'string' ? chunk : chunk.toString('utf8')
+      if (Buffer.byteLength(buffer) > this.maxFrameBytes) {
+        dropWithReason('frame-too-large')
+        return
+      }
+
+      let newlineIndex = buffer.indexOf('\n')
+      while (newlineIndex !== -1) {
+        const line = buffer.slice(0, newlineIndex).trim()
+        buffer = buffer.slice(newlineIndex + 1)
+        newlineIndex = buffer.indexOf('\n')
+
+        if (line.length === 0) {
+          continue
+        }
+
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(line)
+        } catch {
+          dropWithReason('malformed-json')
+          return
+        }
+
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          dropWithReason('non-object-frame')
+          return
+        }
+        const frame = parsed as Record<string, unknown>
+
+        if (!authenticated) {
+          if (typeof frame.auth !== 'string' || !this.tokensMatch(frame.auth)) {
+            dropWithReason('invalid-token')
+            return
+          }
+          authenticated = true
+          continue
+        }
+
+        this.emitter.emit('payload', { terminalId: this.terminalId, payload: frame })
+      }
+    })
+
+    socket.on('error', (error) => {
+      this.emitter.emit('error', error)
+    })
+  }
+
+  private tokensMatch(candidate: string): boolean {
+    // Constant-time comparison to avoid timing side channel.
+    const a = Buffer.from(this.token, 'utf8')
+    const b = Buffer.from(candidate, 'utf8')
+    if (a.length !== b.length) {
+      return false
+    }
+    return crypto.timingSafeEqual(a, b)
+  }
+}
