@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type {
+  LlmAnalysisSource,
   LlmCauseCategory,
   ManualTaskRecord,
   MonitoringHistoryEvent,
@@ -37,7 +38,7 @@ export interface MonitoringTerminalState {
   analysisCategory: LlmCauseCategory
   analysisSummary: string
   confidence: 'low' | 'medium' | 'high'
-  source: 'llm' | 'no-api'
+  source: LlmAnalysisSource
   matchedText: string
   patternName: string
   updatedAt: number
@@ -70,7 +71,7 @@ export interface AttentionTransition {
   analysisSummary: string
   analysisCategory: LlmCauseCategory
   confidence: 'low' | 'medium' | 'high'
-  source: 'llm' | 'no-api'
+  source: LlmAnalysisSource
   timestamp: number
 }
 

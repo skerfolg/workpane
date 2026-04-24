@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, memo } from 'react'
 import { AlertTriangle, Globe, History, Clock3, TerminalSquare, Columns2, Rows2 } from 'lucide-react'
-import type { MonitoringTimelineFilter } from '../../../../shared/types'
+import type { L0Status, MonitoringTimelineFilter } from '../../../../shared/types'
+import { useL0Status } from '../../hooks/useL0Status'
 import { LeafNode } from '../../types/terminal-layout'
 import {
   useTerminalMonitoring,
@@ -90,6 +91,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
   const isFocused = focusedPanelId === node.panelId
   const activeMonitoringState = useTerminalMonitoring(node.activeTerminalId)
   const activeTransitionLog = useTerminalTransitionLog(node.activeTerminalId)
+  const activeL0Status = useL0Status(node.activeTerminalId)
   const panelNeedsAttention = activeMonitoringState?.attentionNeeded === true
   const displayCopy = activeMonitoringState
     ? formatMonitoringDisplay({
@@ -239,7 +241,7 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
         danger: true
       }
     ]
-  }, [node.panelId, node.activeTerminalId, terminals, splitPanel, closePanel, renameTerminal, removeTerminal, createBrowser])
+  }, [node.panelId, node.activeTerminalId, terminals, splitPanel, closePanel, renameTerminal, removeTerminal, createBrowser, createTerminal])
 
   // Tab drag source handlers — set/clear global drag state
   // IMPORTANT: Delay setDragState so the overlay doesn't insert into the DOM during dragstart,
@@ -472,6 +474,11 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
+
+        {/* DP-2 L0 status badge */}
+        {activeL0Status && activeL0Status.mode !== 'inactive' && (
+          <L0StatusBadge status={activeL0Status} />
+        )}
 
         {/* Panel action buttons */}
         <button
@@ -939,3 +946,94 @@ function TerminalPanelInner({ node }: TerminalPanelProps): React.JSX.Element {
 }
 
 export const TerminalPanel = memo(TerminalPanelInner)
+
+interface L0StatusBadgeProps {
+  status: L0Status
+}
+
+const L0_BADGE_PALETTE: Record<
+  L0Status['mode'],
+  { dot: string; ring: string; text: string; label: string; tooltip: string }
+> = {
+  inactive: {
+    dot: 'transparent',
+    ring: 'transparent',
+    text: 'transparent',
+    label: '',
+    tooltip: ''
+  },
+  'awaiting-first-event': {
+    dot: '#94a3b8',
+    ring: 'rgba(148, 163, 184, 0.35)',
+    text: '#cbd5f5',
+    label: 'L0 ready',
+    tooltip: 'Waiting for first vendor event to fingerprint the schema'
+  },
+  active: {
+    dot: '#22c55e',
+    ring: 'rgba(34, 197, 94, 0.35)',
+    text: '#bbf7d0',
+    label: 'L0 vendor-event',
+    tooltip: 'High-precision vendor-emitted events are driving supervision'
+  },
+  degraded: {
+    dot: '#f59e0b',
+    ring: 'rgba(245, 158, 11, 0.35)',
+    text: '#fde68a',
+    label: 'heuristic only',
+    tooltip: 'Vendor stream invariant failed — fell back to L1/L2/no-API heuristics'
+  }
+}
+
+function L0StatusBadge({ status }: L0StatusBadgeProps): React.JSX.Element | null {
+  const palette = L0_BADGE_PALETTE[status.mode]
+  if (!palette.label) {
+    return null
+  }
+  const tooltipParts = [palette.tooltip]
+  if (status.fingerprint) {
+    tooltipParts.push(`fingerprint: ${status.fingerprint}`)
+  }
+  if (status.lastDegradeReason) {
+    tooltipParts.push(`reason: ${status.lastDegradeReason}`)
+  }
+  return (
+    <div
+      data-testid="l0-status-badge"
+      data-l0-mode={status.mode}
+      title={tooltipParts.join(' · ')}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '0 8px',
+        height: '20px',
+        marginRight: '6px',
+        borderRadius: '10px',
+        border: `1px solid ${palette.ring}`,
+        backgroundColor: 'transparent',
+        color: palette.text,
+        fontSize: '11px',
+        lineHeight: '20px',
+        userSelect: 'none',
+        flexShrink: 0
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: '8px',
+          height: '8px',
+          borderRadius: '50%',
+          backgroundColor: palette.dot,
+          boxShadow: `0 0 0 3px ${palette.ring}`,
+          animation: status.mode === 'awaiting-first-event'
+            ? 'l0-status-pulse 1.6s ease-in-out infinite'
+            : undefined
+        }}
+      />
+      <span>{palette.label}</span>
+      <style>{`@keyframes l0-status-pulse { 0%, 100% { opacity: 0.4 } 50% { opacity: 1 } }`}</style>
+    </div>
+  )
+}

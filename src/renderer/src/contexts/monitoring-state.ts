@@ -1,4 +1,5 @@
 import type {
+  LlmAnalysisSource,
   SessionMonitoringCategory,
   SessionMonitoringState,
   SessionMonitoringTransitionEvent,
@@ -13,7 +14,7 @@ export interface MonitoringEntry {
   status: 'attention-needed'
   cause: SessionMonitoringCategory
   confidence: 'low' | 'medium' | 'high'
-  source: 'llm' | 'no-api'
+  source: LlmAnalysisSource
   summary: string
   updatedAt: number
 }
@@ -63,7 +64,7 @@ export interface MonitoringTransitionEntry {
   reason?: 'write' | 'exit'
   cause?: SessionMonitoringCategory
   confidence?: 'low' | 'medium' | 'high'
-  source?: 'llm' | 'no-api'
+  source?: LlmAnalysisSource
   summary?: string
   patternName?: string
   matchedText?: string
@@ -254,7 +255,9 @@ export function formatMonitoringDisplay(entry: MonitoringEntry): MonitoringDispl
 
   return {
     headline,
-    meta: entry.source === 'no-api'
+    meta: entry.source === 'l0-vendor-event'
+      ? 'vendor event · high precision'
+      : entry.source === 'no-api'
       ? `no-api hint · ${entry.confidence} confidence`
       : `llm classification · ${entry.confidence} confidence`
   }
@@ -411,7 +414,9 @@ export function selectTerminalMonitoringIndicator(
 
   const display = formatMonitoringDisplay(entry)
   const tone: MonitoringIndicatorTone =
-    entry.source === 'no-api' || entry.confidence === 'low' ? 'tentative' : 'direct'
+    entry.source === 'l0-vendor-event'
+      ? 'direct'
+      : (entry.source === 'no-api' || entry.confidence === 'low' ? 'tentative' : 'direct')
 
   return {
     hasAttention: true,

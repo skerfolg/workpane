@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import type { LlmAnalysisSource } from '../../src/shared/types'
 
 const MONITORING_STATE_MODULE_PATH = '../../src/renderer/src/contexts/monitoring-state'
 
 type MonitoringCause = 'approval' | 'input-needed' | 'error'
-type MonitoringSource = 'llm' | 'no-api'
+type MonitoringSource = LlmAnalysisSource
 type MonitoringConfidence = 'low' | 'medium' | 'high'
 type MonitoringTransitionKind = 'entered' | 'updated' | 'cleared'
 
@@ -1010,5 +1011,37 @@ if (!loadedModule.ok) {
     assert.equal(copy.headline, 'Approval needed')
     assert.match(copy.meta, /llm classification/i)
     assert.match(copy.meta, /high confidence/i)
+  })
+
+  test('formatMonitoringDisplay marks vendor-event entries as high precision direct copy', () => {
+    const copy = formatMonitoringDisplay(createEntry({
+      source: 'l0-vendor-event',
+      confidence: 'high',
+      cause: 'approval'
+    }))
+
+    assert.equal(copy.headline, 'Approval needed')
+    assert.equal(copy.meta, 'vendor event · high precision')
+  })
+
+  test('selectTerminalMonitoringIndicator keeps vendor-event entries direct', () => {
+    let state = createMonitoringState()
+
+    state = monitoringStateReducer(state, {
+      type: 'upsert',
+      entry: createEntry({
+        terminalId: 'terminal-vendor',
+        source: 'l0-vendor-event',
+        confidence: 'high',
+        cause: 'approval',
+        updatedAt: 3
+      })
+    })
+
+    const indicator = selectTerminalMonitoringIndicator(state, 'terminal-vendor')
+
+    assert.equal(indicator?.hasAttention, true)
+    assert.equal(indicator?.tone, 'direct')
+    assert.match(indicator?.title ?? '', /vendor event · high precision/i)
   })
 }

@@ -32,9 +32,18 @@ import {
   applyPresetLayoutToGroups,
 } from '../utils/preset-layouts'
 
+import type { L0Vendor } from '../../../shared/types'
+
 export interface TerminalTab {
   id: string
   name: string
+}
+
+export interface CreateTerminalOptions {
+  shell?: string
+  vendorHint?: L0Vendor
+  spawnArgs?: string[]
+  displayName?: string
 }
 
 export interface BrowserTab {
@@ -87,7 +96,7 @@ interface TerminalContextValue {
   isDraggingTab: boolean
   dragSourceInfo: DragSourceInfo | null
   setDragState: (info: DragSourceInfo | null) => void
-  createTerminal: () => Promise<void>
+  createTerminal: (options?: CreateTerminalOptions) => Promise<void>
   removeTerminal: (id: string) => void
   renameTerminal: (id: string, newName: string) => void
   setActiveTerminal: (id: string, panelId?: string) => void
@@ -1061,9 +1070,9 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
 
   // ---- Action creators (stable references via useCallback) ----
 
-  const createTerminal = useCallback(async (): Promise<void> => {
+  const createTerminal = useCallback(async (options?: CreateTerminalOptions): Promise<void> => {
     const id = generateId()
-    const name = `Terminal ${getNextTerminalNumber()}`
+    const name = options?.displayName ?? `Terminal ${getNextTerminalNumber()}`
     let cwd: string | undefined
     try {
       const wsApi = (window as any).workspace
@@ -1075,7 +1084,16 @@ export function TerminalProvider({ children }: { children: React.ReactNode }): R
       // ignore
     }
     const api = (window as any).terminal
-    if (api) api.create(id, undefined, cwd)
+    if (api) {
+      if (options?.vendorHint || options?.spawnArgs || options?.shell) {
+        api.create(id, options.shell, cwd, {
+          vendorHint: options.vendorHint,
+          spawnArgs: options.spawnArgs
+        })
+      } else {
+        api.create(id, undefined, cwd)
+      }
+    }
 
     const activeGroup = getActiveGroup(stateRef.current)
     dispatch({ type: 'CREATE_TERMINAL', id, name, panelId: activeGroup.focusedPanelId })
