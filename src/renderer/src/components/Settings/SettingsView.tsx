@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import './SettingsView.css'
 import { useTheme } from '../../contexts/ThemeContext'
 import i18n from '../../i18n'
+import { HookIngressSettings } from './HookIngressSettings'
 import type {
   LlmExecutionLane,
   LlmModelSummary,
@@ -791,6 +792,12 @@ export default function SettingsView(): React.JSX.Element {
             })}
 
             {llmError ? <div className="settings-pattern-error">{llmError}</div> : null}
+          </Section>
+        )}
+
+        {(visible('hook') || visible('l0') || visible('supervision') || visible('ingress') || !q) && (
+          <Section title="L0 Supervision (Hook Ingress)">
+            <HookIngressSettings />
           </Section>
         )}
 
