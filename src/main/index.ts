@@ -965,6 +965,30 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('l0:get-path-snapshot', () => l0Orchestrator.getSnapshot())
   ipcMain.handle('l0:refresh-path', async () => l0Orchestrator.refresh())
+  ipcMain.handle('l0:install-hooks', async () => {
+    const { installHooks } = await import('./l0/hook-installer')
+    const bridgePath = is.dev
+      ? join(__dirname, '..', '..', 'resources', 'hooks', 'cc-bridge.js')
+      : join(process.resourcesPath, 'hooks', 'cc-bridge.js')
+    const result = installHooks({
+      hooks: [
+        { event: 'PreToolUse', command: `node "${bridgePath}"` },
+        { event: 'PostToolUse', command: `node "${bridgePath}"` },
+        { event: 'SessionStart', command: `node "${bridgePath}"` },
+        { event: 'SessionEnd', command: `node "${bridgePath}"` }
+      ]
+    })
+    await l0Orchestrator.refresh()
+    return result
+  })
+  ipcMain.handle('l0:uninstall-hooks', async () => {
+    const { uninstallHooks } = await import('./l0/hook-installer')
+    const result = uninstallHooks({
+      events: ['PreToolUse', 'PostToolUse', 'SessionStart', 'SessionEnd']
+    })
+    await l0Orchestrator.refresh()
+    return result
+  })
 
   const customPatterns = (settingsManager.get('notification.customPatterns') ?? []) as Array<{ name: string; pattern: string }>
   approvalDetector.setCustomPatterns(customPatterns)

@@ -229,9 +229,28 @@ export interface L0PathSnapshotShape {
   probedAt: number
 }
 
+export interface L0HookInstallResult {
+  kind:
+    | 'installed'
+    | 'already-installed'
+    | 'uninstalled'
+    | 'no-op-not-installed'
+    | 'abort-parse-error'
+    | 'abort-verify-fail'
+    | 'abort-io-error'
+  reason?: string
+  backupPath?: string
+  appliedAt?: number
+  restoredAt?: number
+  restored?: boolean
+  stage?: 'precheck' | 'backup' | 'write' | 'rename' | 'verify'
+}
+
 export interface L0API {
   getPathSnapshot: () => Promise<L0PathSnapshotShape | null>
   refreshPath: () => Promise<L0PathSnapshotShape>
+  installHooks: () => Promise<L0HookInstallResult>
+  uninstallHooks: () => Promise<L0HookInstallResult>
   onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => () => void
   onPathProbeError: (callback: (data: { reason: string }) => void) => () => void
 }

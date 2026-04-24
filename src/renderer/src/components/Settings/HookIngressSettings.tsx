@@ -57,6 +57,7 @@ export function HookIngressSettings(): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<L0PathSnapshotShape | null>(null)
   const [probeError, setProbeError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [lastActionResult, setLastActionResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -87,6 +88,60 @@ export function HookIngressSettings(): React.JSX.Element {
       setProbeError(null)
     } catch (error) {
       setProbeError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const handleInstall = useCallback(async () => {
+    setBusy(true)
+    try {
+      const result = await window.l0.installHooks()
+      if (result.kind === 'installed') {
+        setLastActionResult({
+          ok: true,
+          message: `Hook 설치 완료. Backup: ${result.backupPath ?? '(n/a)'}`
+        })
+      } else if (result.kind === 'already-installed') {
+        setLastActionResult({ ok: true, message: result.reason ?? '이미 설치됨' })
+      } else {
+        setLastActionResult({
+          ok: false,
+          message: `설치 실패 (${result.kind}): ${result.reason ?? 'unknown'}`
+        })
+      }
+    } catch (error) {
+      setLastActionResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error)
+      })
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const handleUninstall = useCallback(async () => {
+    setBusy(true)
+    try {
+      const result = await window.l0.uninstallHooks()
+      if (result.kind === 'uninstalled') {
+        setLastActionResult({
+          ok: true,
+          message: `Hook 제거 완료. Backup: ${result.backupPath ?? '(n/a)'}`
+        })
+      } else if (result.kind === 'no-op-not-installed') {
+        setLastActionResult({ ok: true, message: '설치되어 있지 않음' })
+      } else {
+        setLastActionResult({
+          ok: false,
+          message: `제거 실패 (${result.kind}): ${result.reason ?? 'unknown'}`
+        })
+      }
+    } catch (error) {
+      setLastActionResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setBusy(false)
     }
@@ -177,11 +232,47 @@ export function HookIngressSettings(): React.JSX.Element {
         </p>
       ) : null}
 
-      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" onClick={handleRefresh} disabled={busy} data-testid="hook-ingress-refresh">
           {busy ? '감지 중...' : '상태 재확인'}
         </button>
+
+        {snapshot.cc.kind === 'supported' && !snapshot.state.hook_installed ? (
+          <button
+            type="button"
+            onClick={handleInstall}
+            disabled={busy}
+            data-testid="hook-ingress-install"
+            style={{ background: '#2b7a2b', color: 'white', border: '1px solid #2b7a2b' }}
+          >
+            {busy ? '설치 중...' : 'Hook 설치 (one-click)'}
+          </button>
+        ) : null}
+
+        {snapshot.state.hook_installed ? (
+          <button
+            type="button"
+            onClick={handleUninstall}
+            disabled={busy}
+            data-testid="hook-ingress-uninstall"
+          >
+            {busy ? '제거 중...' : 'Hook 제거'}
+          </button>
+        ) : null}
       </div>
+
+      {lastActionResult ? (
+        <p
+          data-testid="hook-ingress-action-result"
+          style={{
+            marginTop: 8,
+            color: lastActionResult.ok ? '#2b7a2b' : '#b84040',
+            fontSize: 12
+          }}
+        >
+          {lastActionResult.ok ? '✅' : '⚠'} {lastActionResult.message}
+        </p>
+      ) : null}
     </div>
   )
 }

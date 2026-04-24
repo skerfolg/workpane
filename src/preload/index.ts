@@ -274,10 +274,12 @@ const monitoringHistoryAPI = {
     ipcRenderer.invoke('history:complete-manual-task', taskId, link) as Promise<ManualTaskRecord | null>
 }
 
-// Slice 2E — L0 path snapshot / subscription surface for Settings UI
+// Slice 2E/2D — L0 path snapshot / subscription + hook install surface
 const l0API = {
   getPathSnapshot: () => ipcRenderer.invoke('l0:get-path-snapshot'),
   refreshPath: () => ipcRenderer.invoke('l0:refresh-path'),
+  installHooks: () => ipcRenderer.invoke('l0:install-hooks'),
+  uninstallHooks: () => ipcRenderer.invoke('l0:uninstall-hooks'),
   onPathSnapshot: (callback: (snapshot: unknown) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => callback(data)
     ipcRenderer.on('l0:path-snapshot', handler)
