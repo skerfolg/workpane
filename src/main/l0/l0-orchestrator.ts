@@ -34,6 +34,13 @@ export interface L0PathSnapshot {
    */
   sessionLogProjectDir?: string
   probedAt: number
+  /**
+   * RW-A: non-null when this snapshot describes a single terminal's
+   * decision. `null` for the "global default" snapshot produced by
+   * unbound refresh() calls that consult process.cwd() instead of a
+   * real terminal binding.
+   */
+  terminalId: string | null
 }
 
 export interface ProbeCapabilitiesOptions {
@@ -43,6 +50,10 @@ export interface ProbeCapabilitiesOptions {
   settingsPathOverride?: string
   /** Override the CC detection result for tests. */
   ccResultOverride?: CcDetectionResult
+  /** RW-A: when set, the returned snapshot is tagged with this terminalId. */
+  terminalId?: string | null
+  /** RW-E forward-compat: whether hook has observed a payload for this terminal. */
+  hookFiresObserved?: boolean
 }
 
 function defaultSettingsPath(): string {
@@ -102,12 +113,12 @@ export async function probeCapabilities(
 
   const hook = detectHookInstallStatus(settingsPath)
   const hookInstalled = cc.kind === 'supported' && hook.installed
-  // hook_fires is a runtime observation (requires listener). Until the
-  // wiring branch in Slice 2 Phase 2B lands, we optimistically treat
-  // hook_fires as equal to hook_installed so the selector can upgrade to
-  // L0-A once install succeeds. The path heartbeat (Plan v3 scenario 5)
-  // will downgrade if firing stops.
-  const hookFires = hookInstalled
+  // RW-E: prefer the observed-from-payload flag when the orchestrator
+  // has already seen a real hook fire for this terminal. Falls back to
+  // `hookInstalled` only when no runtime observation exists yet, at
+  // which point the stale-check tick will flip it once a payload
+  // actually arrives.
+  const hookFires = options.hookFiresObserved ?? hookInstalled
 
   const projectsDir = resolveProjectsDir()
   const match = projectsDir ? findMatchingProjectDir(projectsDir, cwd) : null
@@ -128,25 +139,115 @@ export async function probeCapabilities(
     state,
     cc,
     sessionLogProjectDir: match?.path,
-    probedAt: Date.now()
+    probedAt: Date.now(),
+    terminalId: options.terminalId ?? null
   }
 }
 
+export interface TerminalBinding {
+  terminalId: string
+  cwd: string
+  /** Settings path override (tests). */
+  settingsPathOverride?: string
+}
+
 export class L0Orchestrator {
+  /** Global snapshot (no terminal binding). Used by Settings summary. */
   private latest: L0PathSnapshot | null = null
+  /** RW-A: per-terminal snapshots keyed by terminalId. */
+  private readonly perTerminal = new Map<string, L0PathSnapshot>()
+  /** RW-A: binding metadata so bindTerminal-refresh does not require caller state. */
+  private readonly bindings = new Map<string, TerminalBinding>()
+  /** RW-E forward: terminals that observed at least one real hook payload. */
+  private readonly hookObservedTerminals = new Set<string>()
   private readonly listeners = new Set<(snapshot: L0PathSnapshot) => void>()
 
   getSnapshot(): L0PathSnapshot | null {
     return this.latest
   }
 
+  /** RW-A: expose the per-terminal snapshot without triggering a refresh. */
+  getSnapshotFor(terminalId: string): L0PathSnapshot | null {
+    return this.perTerminal.get(terminalId) ?? null
+  }
+
+  /** RW-A: iterate all active per-terminal snapshots. */
+  listPerTerminalSnapshots(): L0PathSnapshot[] {
+    return Array.from(this.perTerminal.values())
+  }
+
+  /** RW-A: register a terminal so future refresh(terminalId) picks up its cwd. */
+  bindTerminal(binding: TerminalBinding): void {
+    this.bindings.set(binding.terminalId, binding)
+  }
+
+  /** RW-A: drop a terminal binding and its cached snapshot. */
+  unbindTerminal(terminalId: string): void {
+    this.bindings.delete(terminalId)
+    this.perTerminal.delete(terminalId)
+    this.hookObservedTerminals.delete(terminalId)
+  }
+
+  /** RW-E forward: mark a terminal's hook as having fired at least once. */
+  markHookObserved(terminalId: string): void {
+    this.hookObservedTerminals.add(terminalId)
+  }
+
+  /** RW-E forward: clear the observed flag — selector re-evaluates on next refresh. */
+  clearHookObserved(terminalId: string): void {
+    this.hookObservedTerminals.delete(terminalId)
+  }
+
+  /**
+   * Refresh either the global snapshot (no terminalId in options or
+   * binding) or the per-terminal snapshot for the given terminalId.
+   * Listeners always receive the produced snapshot so UI can react to
+   * either kind.
+   */
   async refresh(options: ProbeCapabilitiesOptions = {}): Promise<L0PathSnapshot> {
-    const snapshot = await probeCapabilities(options)
-    this.latest = snapshot
+    const terminalId = options.terminalId ?? null
+    let mergedOptions: ProbeCapabilitiesOptions = options
+
+    if (terminalId) {
+      const binding = this.bindings.get(terminalId)
+      const merged: ProbeCapabilitiesOptions = {
+        ...options,
+        cwd: options.cwd ?? binding?.cwd,
+        settingsPathOverride: options.settingsPathOverride ?? binding?.settingsPathOverride
+      }
+      // Only set hookFiresObserved when the caller explicitly provided
+      // it or when we have positive evidence. Leaving the field
+      // undefined lets probeCapabilities fall back to `hookInstalled`
+      // so a freshly bound terminal does not flip to false before any
+      // evidence exists (RW-A regression: test expected optimistic
+      // upgrade when marker is present and no observation yet).
+      if (options.hookFiresObserved !== undefined) {
+        merged.hookFiresObserved = options.hookFiresObserved
+      } else if (this.hookObservedTerminals.has(terminalId)) {
+        merged.hookFiresObserved = true
+      }
+      mergedOptions = merged
+    }
+
+    const snapshot = await probeCapabilities(mergedOptions)
+    if (terminalId) {
+      this.perTerminal.set(terminalId, snapshot)
+    } else {
+      this.latest = snapshot
+    }
     for (const listener of this.listeners) {
       listener(snapshot)
     }
     return snapshot
+  }
+
+  /**
+   * RW-A: refresh every bound terminal in parallel. Useful after
+   * global-scope state changes (CC install/uninstall, settings.json edits).
+   */
+  async refreshAllTerminals(): Promise<L0PathSnapshot[]> {
+    const ids = Array.from(this.bindings.keys())
+    return Promise.all(ids.map((id) => this.refresh({ terminalId: id })))
   }
 
   onChange(listener: (snapshot: L0PathSnapshot) => void): () => void {
@@ -159,5 +260,8 @@ export class L0Orchestrator {
   dispose(): void {
     this.listeners.clear()
     this.latest = null
+    this.perTerminal.clear()
+    this.bindings.clear()
+    this.hookObservedTerminals.clear()
   }
 }

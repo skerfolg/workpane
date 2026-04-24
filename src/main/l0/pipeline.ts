@@ -10,15 +10,59 @@ export interface L0PipelineResult {
 export type L0StatusListener = (status: L0Status) => void
 
 export class L0Pipeline {
-  private readonly adapter: L0Adapter
+  private readonly defaultAdapter: L0Adapter
   private readonly onMonitoringUpsert: (state: SessionMonitoringState) => void
   private readonly vendorByTerminalId = new Map<string, L0Vendor>()
   private readonly statusListeners = new Set<L0StatusListener>()
   private readonly lastBroadcastMode = new Map<string, string>()
+  // RW-A: optional per-terminal adapter override. When absent, the default
+  // adapter from the constructor is used (preserves existing callers).
+  private readonly adapterByTerminalId = new Map<string, L0Adapter>()
 
   constructor(adapter: L0Adapter, onMonitoringUpsert: (state: SessionMonitoringState) => void) {
-    this.adapter = adapter
+    this.defaultAdapter = adapter
     this.onMonitoringUpsert = onMonitoringUpsert
+  }
+
+  /**
+   * RW-A: bind a dedicated adapter to a single terminal. Used by
+   * terminal-manager when it knows the terminal runs Claude Code with a
+   * hook server or session-log tailer that feeds the pipeline via ingest
+   * with source-shaped payload objects. Default adapter is preserved for
+   * terminals that have no override.
+   */
+  setAdapterFor(terminalId: string, adapter: L0Adapter): void {
+    this.adapterByTerminalId.set(terminalId, adapter)
+    // Broadcast so listeners pick up any difference in the adapter's
+    // initial getStatus snapshot (e.g. freshly constructed hook adapter
+    // reports 'awaiting-first-event').
+    this.lastBroadcastMode.delete(terminalId)
+    this.broadcastStatus(terminalId)
+  }
+
+  /**
+   * RW-A: drop the per-terminal adapter override, returning the terminal
+   * to the default adapter. Disposes the per-terminal adapter to release
+   * any state it held for this id.
+   */
+  clearAdapterFor(terminalId: string): void {
+    const adapter = this.adapterByTerminalId.get(terminalId)
+    if (!adapter) {
+      return
+    }
+    try {
+      adapter.reset(terminalId)
+    } catch {
+      // Best-effort cleanup; never let an adapter reset failure leak
+      // through the pipeline boundary.
+    }
+    this.adapterByTerminalId.delete(terminalId)
+    this.lastBroadcastMode.delete(terminalId)
+    this.broadcastStatus(terminalId)
+  }
+
+  private adapterFor(terminalId: string): L0Adapter {
+    return this.adapterByTerminalId.get(terminalId) ?? this.defaultAdapter
   }
 
   /**
@@ -46,7 +90,7 @@ export class L0Pipeline {
       return { emittedEvents: 0, suppressApprovalDetector: false }
     }
     const ingestStartedAt = performance.now()
-    const result = this.adapter.ingest(terminalId, input)
+    const result = this.adapterFor(terminalId).ingest(terminalId, input)
     if (result.kind === 'degrade') {
       l0Telemetry.recordDegrade(result.reason)
     }
@@ -56,13 +100,30 @@ export class L0Pipeline {
   }
 
   reset(terminalId: string): void {
-    this.adapter.reset(terminalId)
+    this.defaultAdapter.reset(terminalId)
+    const override = this.adapterByTerminalId.get(terminalId)
+    if (override) {
+      try {
+        override.reset(terminalId)
+      } catch {
+        // Swallow; reset is best-effort cleanup.
+      }
+      this.adapterByTerminalId.delete(terminalId)
+    }
     this.vendorByTerminalId.delete(terminalId)
     this.lastBroadcastMode.delete(terminalId)
   }
 
   dispose(): void {
-    this.adapter.dispose()
+    this.defaultAdapter.dispose()
+    for (const adapter of this.adapterByTerminalId.values()) {
+      try {
+        adapter.dispose()
+      } catch {
+        // Continue tearing down the rest.
+      }
+    }
+    this.adapterByTerminalId.clear()
     this.vendorByTerminalId.clear()
     this.statusListeners.clear()
     this.lastBroadcastMode.clear()
@@ -73,7 +134,7 @@ export class L0Pipeline {
     if (!vendor) {
       return { terminalId, mode: 'inactive' }
     }
-    const snapshot = this.adapter.getStatus(terminalId)
+    const snapshot = this.adapterFor(terminalId).getStatus(terminalId)
     return {
       terminalId,
       vendor,
