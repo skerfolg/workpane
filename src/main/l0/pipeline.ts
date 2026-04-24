@@ -1,6 +1,5 @@
 import type { L0Event, L0Status, L0Vendor, SessionMonitoringState } from '../../shared/types'
-import { stripAnsi } from '../approval-detector'
-import { CcStreamJsonAdapter, type IngestResult } from './adapters/cc-stream-json-adapter'
+import type { IngestResult, L0Adapter } from './adapters/L0Adapter'
 import { l0Telemetry } from './telemetry'
 
 export interface L0PipelineResult {
@@ -11,13 +10,14 @@ export interface L0PipelineResult {
 export type L0StatusListener = (status: L0Status) => void
 
 export class L0Pipeline {
-  private readonly adapter = new CcStreamJsonAdapter()
+  private readonly adapter: L0Adapter
   private readonly onMonitoringUpsert: (state: SessionMonitoringState) => void
   private readonly vendorByTerminalId = new Map<string, L0Vendor>()
   private readonly statusListeners = new Set<L0StatusListener>()
   private readonly lastBroadcastMode = new Map<string, string>()
 
-  constructor(onMonitoringUpsert: (state: SessionMonitoringState) => void) {
+  constructor(adapter: L0Adapter, onMonitoringUpsert: (state: SessionMonitoringState) => void) {
+    this.adapter = adapter
     this.onMonitoringUpsert = onMonitoringUpsert
   }
 
@@ -35,13 +35,18 @@ export class L0Pipeline {
     this.broadcastStatus(terminalId)
   }
 
-  ingest(terminalId: string, rawChunk: string, workspacePath: string): L0PipelineResult {
+  /**
+   * Ingest raw input (adapter-specific shape: string chunk for stdout,
+   * parsed payload object for hook/session-log). The bound adapter validates
+   * and normalizes the input before emitting L0Events.
+   */
+  ingest(terminalId: string, input: unknown, workspacePath: string): L0PipelineResult {
     const vendor = this.vendorByTerminalId.get(terminalId)
     if (!vendor) {
       return { emittedEvents: 0, suppressApprovalDetector: false }
     }
     const ingestStartedAt = performance.now()
-    const result = this.adapter.ingestStdout(terminalId, stripAnsi(rawChunk))
+    const result = this.adapter.ingest(terminalId, input)
     if (result.kind === 'degrade') {
       l0Telemetry.recordDegrade(result.reason)
     }

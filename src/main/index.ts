@@ -15,6 +15,7 @@ import { ApprovalDetector } from './approval-detector'
 import { BrowserManager } from './browser-manager'
 import { McpBrowserHandler } from './mcp-browser-server'
 import { HistoryStore } from './history-store'
+import { CcStreamJsonAdapter } from './l0/adapters/cc-stream-json-adapter'
 import { L0Pipeline } from './l0/pipeline'
 import * as path from 'path'
 import { LlmManager } from './llm/manager'
@@ -929,7 +930,7 @@ app.whenReady().then(() => {
     }
   })
   terminalManager.setApprovalDetector(approvalDetector)
-  const l0Pipeline = new L0Pipeline((state) => {
+  const l0Pipeline = new L0Pipeline(new CcStreamJsonAdapter(), (state) => {
     emitMonitoringUpsert(state)
   })
   l0Pipeline.onStatusChanged((status) => {

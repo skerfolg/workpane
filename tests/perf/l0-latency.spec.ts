@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
+import { CcStreamJsonAdapter } from '../../src/main/l0/adapters/cc-stream-json-adapter'
 import { L0Pipeline } from '../../src/main/l0/pipeline'
 import { l0Telemetry } from '../../src/main/l0/telemetry'
 
@@ -45,7 +46,7 @@ test('L0 pipeline p95 emit latency stays under the 200ms SLO', () => {
   assert.ok(fixtureLines.length > 0, 'fixture must contain at least one payload line')
 
   l0Telemetry.reset()
-  const pipeline = new L0Pipeline(() => undefined)
+  const pipeline = new L0Pipeline(new CcStreamJsonAdapter(), () => undefined)
   const measurements: number[] = []
 
   for (let i = 0; i < ITERATION_COUNT; i += 1) {
@@ -81,7 +82,7 @@ test('L0 pipeline p95 emit latency stays under the 200ms SLO', () => {
 test('L0 telemetry histogram reports emit latency samples', () => {
   const fixtureLines = loadPayloadLines('assistant-success.jsonl')
   l0Telemetry.reset()
-  const pipeline = new L0Pipeline(() => undefined)
+  const pipeline = new L0Pipeline(new CcStreamJsonAdapter(), () => undefined)
   pipeline.bindVendor('telemetry-terminal', 'claude-code')
   for (const payload of fixtureLines) {
     pipeline.ingest('telemetry-terminal', `${payload}\n`, 'D:/workspace/perf')

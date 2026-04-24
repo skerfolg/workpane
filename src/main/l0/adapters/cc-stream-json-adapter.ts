@@ -1,31 +1,19 @@
-import type { L0DegradeReason, L0Event, L0Mode } from '../../../shared/types'
+import type { L0DegradeReason, L0Event } from '../../../shared/types'
+import { stripAnsi } from '../../approval-detector'
 import {
   hasAssistantErrorShape,
   hasToolResultShape,
   hasToolUseShape,
   isIngestibleAssistantEnvelope,
   isKnownNoiseEnvelope,
-  matchClaudeCodeFingerprint,
-  type DegradeReason
+  matchClaudeCodeFingerprint
 } from '../fingerprint'
 import { l0Telemetry } from '../telemetry'
+import type { AdapterStatusSnapshot, IngestResult, L0Adapter } from './L0Adapter'
 
-export type IngestResult =
-  | {
-    kind: 'event'
-    events: L0Event[]
-    suppressApprovalDetector: boolean
-  }
-  | {
-    kind: 'noop'
-    suppressApprovalDetector: boolean
-  }
-  | {
-    kind: 'degrade'
-    reason: DegradeReason
-    fingerprintSeen?: string
-    suppressApprovalDetector: false
-  }
+// Re-export so existing imports of IngestResult / AdapterStatusSnapshot from
+// this module keep working after the interface extraction (Slice 1A).
+export type { AdapterStatusSnapshot, IngestResult }
 
 interface AdapterState {
   fingerprint?: string
@@ -34,12 +22,6 @@ interface AdapterState {
   consecutiveDecodeErrors: number
   lastDegradeReason?: L0DegradeReason
   chunksSeenBeforeFirstEvent: number
-}
-
-export interface AdapterStatusSnapshot {
-  mode: L0Mode
-  fingerprint?: string
-  lastDegradeReason?: L0DegradeReason
 }
 
 const MAX_CONSECUTIVE_DECODE_ERRORS = 3
@@ -151,8 +133,20 @@ function toL0Events(
   return []
 }
 
-export class CcStreamJsonAdapter {
+export class CcStreamJsonAdapter implements L0Adapter {
   private stateByTerminalId = new Map<string, AdapterState>()
+
+  /**
+   * L0Adapter contract. Accepts stdout chunks (string) and delegates to
+   * `ingestStdout`. Non-string inputs no-op so a misrouted hook/session-log
+   * payload cannot crash the pipeline.
+   */
+  ingest(terminalId: string, input: unknown): IngestResult {
+    if (typeof input !== 'string') {
+      return { kind: 'noop', suppressApprovalDetector: false }
+    }
+    return this.ingestStdout(terminalId, stripAnsi(input))
+  }
 
   ingestStdout(terminalId: string, chunk: string): IngestResult {
     const state = this.stateByTerminalId.get(terminalId) ?? createState()

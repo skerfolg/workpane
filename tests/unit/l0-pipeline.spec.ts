@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { CcStreamJsonAdapter } from '../../src/main/l0/adapters/cc-stream-json-adapter'
 import { L0Pipeline } from '../../src/main/l0/pipeline'
 
 function buildPipeline(boundTerminals: string[] = ['terminal-1']) {
   const upserts: Array<{ source: string; summary: string; category: string }> = []
-  const pipeline = new L0Pipeline((state) => {
+  const pipeline = new L0Pipeline(new CcStreamJsonAdapter(), (state) => {
     upserts.push({
       source: state.source,
       summary: state.summary,
@@ -142,14 +143,14 @@ test('multi-session state is isolated per terminal', () => {
 })
 
 test('getStatus reports inactive when terminal has no vendor binding', () => {
-  const pipeline = new L0Pipeline(() => undefined)
+  const pipeline = new L0Pipeline(new CcStreamJsonAdapter(), () => undefined)
   const status = pipeline.getStatus('terminal-x')
   assert.equal(status.mode, 'inactive')
   assert.equal(status.vendor, undefined)
 })
 
 test('bindVendor without ingest yields awaiting-first-event status', () => {
-  const pipeline = new L0Pipeline(() => undefined)
+  const pipeline = new L0Pipeline(new CcStreamJsonAdapter(), () => undefined)
   pipeline.bindVendor('terminal-1', 'claude-code')
   const status = pipeline.getStatus('terminal-1')
   assert.equal(status.mode, 'awaiting-first-event')
@@ -178,7 +179,7 @@ test('getStatus transitions to active after a fingerprintable event', () => {
 
 test('ingest on unbound terminal is a no-op with no suppression', () => {
   const upserts: number[] = []
-  const pipeline = new L0Pipeline(() => upserts.push(1))
+  const pipeline = new L0Pipeline(new CcStreamJsonAdapter(), () => upserts.push(1))
   const result = pipeline.ingest(
     'terminal-unbound',
     JSON.stringify({ type: 'assistant', message: { role: 'assistant', type: 'message', content: [] } }) + '\n',
@@ -192,7 +193,7 @@ test('ingest on unbound terminal is a no-op with no suppression', () => {
 
 test('onStatusChanged fires on bind and on mode transitions', () => {
   const events: Array<{ id: string; mode: string }> = []
-  const pipeline = new L0Pipeline(() => undefined)
+  const pipeline = new L0Pipeline(new CcStreamJsonAdapter(), () => undefined)
   pipeline.onStatusChanged((status) => events.push({ id: status.terminalId, mode: status.mode }))
   pipeline.bindVendor('terminal-1', 'claude-code')
   pipeline.ingest(
