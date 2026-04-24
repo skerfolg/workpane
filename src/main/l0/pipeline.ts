@@ -126,6 +126,42 @@ export class L0Pipeline {
     return pipelineResult
   }
 
+  /**
+   * RW-E helper: feed already-parsed L0Events through the dedup + upsert
+   * path without invoking any adapter. Used when two sources must share
+   * the same dedup window but each has its own parsing pipeline (e.g.
+   * the session-log tailer emits parsed envelopes while the hook
+   * adapter stays installed as the per-terminal override).
+   */
+  ingestEvents(
+    terminalId: string,
+    events: L0Event[],
+    workspacePath: string,
+    source: EventKeySource
+  ): L0PipelineResult {
+    const vendor = this.vendorByTerminalId.get(terminalId)
+    if (!vendor) {
+      return { emittedEvents: 0, suppressApprovalDetector: false }
+    }
+    const ingestStartedAt = performance.now()
+    const emitted: L0Event[] = []
+    for (const event of events) {
+      const { tier, key } = deriveEventKey(event, source)
+      if (this.dedupWindow.shouldEmit(terminalId, key)) {
+        emitted.push(event)
+        this.onMonitoringUpsert(this.toMonitoringState(event, workspacePath))
+        l0Telemetry.recordDedupKeyTier(tier)
+      } else {
+        l0Telemetry.recordDedupDropped(source)
+      }
+    }
+    if (emitted.length > 0) {
+      l0Telemetry.recordEventEmitted(vendor, performance.now() - ingestStartedAt)
+    }
+    this.broadcastStatus(terminalId)
+    return { emittedEvents: emitted.length, suppressApprovalDetector: emitted.length > 0 }
+  }
+
   reset(terminalId: string): void {
     this.defaultAdapter.reset(terminalId)
     const override = this.adapterByTerminalId.get(terminalId)

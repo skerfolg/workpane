@@ -58,6 +58,19 @@ export function HookIngressSettings(): React.JSX.Element {
   const [probeError, setProbeError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [lastActionResult, setLastActionResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [perTerminal, setPerTerminal] = useState<L0PathSnapshotShape[]>([])
+  const [breakdownExpanded, setBreakdownExpanded] = useState(false)
+
+  // RW-E: fetch per-terminal breakdown on mount and whenever a snapshot
+  // changes (path-snapshot event fires per refresh).
+  const loadPerTerminal = useCallback(async () => {
+    try {
+      const list = await window.l0.listPerTerminal()
+      setPerTerminal(list)
+    } catch {
+      // swallow; breakdown is a diagnostic, not critical
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -68,7 +81,9 @@ export function HookIngressSettings(): React.JSX.Element {
     const unsubscribeSnapshot = window.l0.onPathSnapshot((next) => {
       setSnapshot(next)
       setProbeError(null)
+      void loadPerTerminal()
     })
+    void loadPerTerminal()
     const unsubscribeError = window.l0.onPathProbeError((err) => {
       setProbeError(err.reason)
     })
@@ -78,7 +93,7 @@ export function HookIngressSettings(): React.JSX.Element {
       unsubscribeSnapshot()
       unsubscribeError()
     }
-  }, [])
+  }, [loadPerTerminal])
 
   const handleRefresh = useCallback(async () => {
     setBusy(true)
@@ -272,6 +287,53 @@ export function HookIngressSettings(): React.JSX.Element {
         >
           {lastActionResult.ok ? '✅' : '⚠'} {lastActionResult.message}
         </p>
+      ) : null}
+
+      {perTerminal.length > 0 ? (
+        <div style={{ marginTop: 12, borderTop: '1px solid #333', paddingTop: 8 }}>
+          <button
+            type="button"
+            onClick={() => setBreakdownExpanded((x) => !x)}
+            data-testid="hook-ingress-breakdown-toggle"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#888',
+              cursor: 'pointer',
+              padding: 0,
+              fontSize: 12
+            }}
+          >
+            {breakdownExpanded ? '▼' : '▶'} Per-terminal breakdown ({perTerminal.length})
+          </button>
+          {breakdownExpanded ? (
+            <table
+              data-testid="hook-ingress-breakdown-table"
+              style={{ marginTop: 8, width: '100%', fontSize: 12, borderCollapse: 'collapse' }}
+            >
+              <thead>
+                <tr style={{ textAlign: 'left', color: '#888' }}>
+                  <th style={{ padding: '2px 4px' }}>Terminal</th>
+                  <th style={{ padding: '2px 4px' }}>Tier</th>
+                  <th style={{ padding: '2px 4px' }}>Rationale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perTerminal.map((snap) => {
+                  const tier = (snap.decision.selected ?? 'NONE') as TierKind
+                  const copy = BADGE_COPY[tier] ?? BADGE_COPY.NONE
+                  return (
+                    <tr key={snap.terminalId ?? 'global'} style={{ borderTop: '1px solid #222' }}>
+                      <td style={{ padding: '4px' }}>{snap.terminalId ?? '(global)'}</td>
+                      <td style={{ padding: '4px', color: copy.color }}>{copy.label}</td>
+                      <td style={{ padding: '4px', color: '#888' }}>{snap.decision.rationale}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )

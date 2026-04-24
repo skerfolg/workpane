@@ -962,8 +962,10 @@ app.whenReady().then(() => {
       if (!hookServersByTerminal.has(terminalId)) {
         const server = new HookServer({ terminalId, workspacePath })
         server.on('payload', ({ terminalId: id, payload }) => {
-          l0Orchestrator.markHookObserved(id)
-          l0Pipeline.ingest(id, payload, workspacePath)
+          // Mark observed + timestamp so the stale-check tick can tell
+          // whether the hook is healthy or genuinely stuck.
+          l0Orchestrator.markHookObserved(id, Date.now())
+          l0Pipeline.ingest(id, payload, workspacePath, 'hook')
         })
         server.on('auth-failure', (f) => {
           console.warn(`[hook-server:${terminalId}] auth-failure: ${f.reason}`)
@@ -989,30 +991,36 @@ app.whenReady().then(() => {
 
       // Session-log tailer via pool (shared by cwd).
       if (!tailerHandles.has(terminalId)) {
-        // Parallel adapter for session-log path; used when hook is absent.
-        // For now we keep the hook adapter on setAdapterFor; session-log
-        // envelopes will route through a second ingest path implemented
-        // in RW-C dedup. As a bootstrap we just wire the envelope to a
-        // no-op handler that RW-C will replace.
         const handle = tailerPool.acquire({
           terminalId,
           cwd: workspacePath,
           onEnvelope: (envelope) => {
-            // Bridge to a dedicated session-log adapter so the pipeline
-            // can produce L0Events without being tied to the hook adapter.
-            // Dedup (RW-C) will suppress duplicates between sources.
+            // RW-E: record the session-log tool_use timestamp so the
+            // evidence-guarded stale check can evaluate whether a
+            // silent hook is genuinely stuck vs the user being idle.
+            const payload = envelope.payload as Record<string, unknown>
+            const message = payload.message as Record<string, unknown> | undefined
+            const content = message && Array.isArray(message.content) ? message.content : []
+            const hasToolUse = content.some((block) =>
+              typeof block === 'object' && block !== null &&
+              (block as Record<string, unknown>).type === 'tool_use'
+            )
+            if (hasToolUse) {
+              l0Orchestrator.observeSessionLogToolUse(envelope.terminalId)
+            }
+            // Parse the envelope via the session-log adapter (separate
+            // from the per-terminal hook adapter override) then route
+            // the resulting L0Events through the pipeline's dedup +
+            // upsert layer tagged as 'session-log'. This keeps both
+            // sources hitting the shared dedup window without needing
+            // a multi-adapter-per-terminal data structure.
             const sessionAdapter = sessionLogAdapterByTerminal.get(envelope.terminalId) ??
               sessionLogAdapterByTerminal
                 .set(envelope.terminalId, new CcSessionLogAdapter())
                 .get(envelope.terminalId)!
-            const result = sessionAdapter.ingest(envelope.terminalId, envelope.payload)
-            if (result.kind === 'event') {
-              for (const _event of result.events) {
-                // RW-C will replace this path with a dedup layer. For
-                // now we route through pipeline.ingest so monitoring
-                // state still updates from the session-log source.
-                l0Pipeline.ingest(envelope.terminalId, envelope.payload, workspacePath)
-              }
+            const parsed = sessionAdapter.ingest(envelope.terminalId, envelope.payload)
+            if (parsed.kind === 'event') {
+              l0Pipeline.ingestEvents(envelope.terminalId, parsed.events, workspacePath, 'session-log')
             }
           }
         })
@@ -1065,6 +1073,10 @@ app.whenReady().then(() => {
   // in a follow-up Slice 2 sub-task. Surface is ready for the 3-state
   // Settings UI (Slice 2C/2D).
   const l0Orchestrator = new L0Orchestrator()
+  // RW-E: evidence-guarded stale check runs every 20s so a silent hook
+  // with active session-log traffic triggers a downgrade without any
+  // direct user input.
+  l0Orchestrator.startStaleCheck()
   void l0Orchestrator.refresh().catch((error) => {
     // Detection is best-effort; failures fall through to L1 baseline.
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1080,6 +1092,8 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('l0:get-path-snapshot', () => l0Orchestrator.getSnapshot())
   ipcMain.handle('l0:refresh-path', async () => l0Orchestrator.refresh())
+  // RW-E: per-terminal snapshot list for Settings UI breakdown view.
+  ipcMain.handle('l0:list-per-terminal', () => l0Orchestrator.listPerTerminalSnapshots())
   ipcMain.handle('l0:install-hooks', async () => {
     const { installHooks } = await import('./l0/hook-installer')
     const bridgePath = is.dev

@@ -249,6 +249,7 @@ export interface L0HookInstallResult {
 export interface L0API {
   getPathSnapshot: () => Promise<L0PathSnapshotShape | null>
   refreshPath: () => Promise<L0PathSnapshotShape>
+  listPerTerminal: () => Promise<L0PathSnapshotShape[]>
   installHooks: () => Promise<L0HookInstallResult>
   uninstallHooks: () => Promise<L0HookInstallResult>
   onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => () => void

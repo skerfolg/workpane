@@ -279,6 +279,7 @@ const monitoringHistoryAPI = {
 const l0API = {
   getPathSnapshot: () => ipcRenderer.invoke('l0:get-path-snapshot'),
   refreshPath: () => ipcRenderer.invoke('l0:refresh-path'),
+  listPerTerminal: () => ipcRenderer.invoke('l0:list-per-terminal'),
   installHooks: () => ipcRenderer.invoke('l0:install-hooks'),
   uninstallHooks: () => ipcRenderer.invoke('l0:uninstall-hooks'),
   onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => {

@@ -149,6 +149,8 @@ export interface TerminalBinding {
   cwd: string
   /** Settings path override (tests). */
   settingsPathOverride?: string
+  /** Test-only: pin CC detection so internal refreshes skip the spawn. */
+  ccResultOverride?: CcDetectionResult
 }
 
 export class L0Orchestrator {
@@ -160,6 +162,18 @@ export class L0Orchestrator {
   private readonly bindings = new Map<string, TerminalBinding>()
   /** RW-E forward: terminals that observed at least one real hook payload. */
   private readonly hookObservedTerminals = new Set<string>()
+  /**
+   * RW-E: explicit hook_fires override per terminal. Set to false after
+   * an evidence-guarded stale downgrade so subsequent refreshes keep the
+   * terminal on L0-E even though settings.json still shows the hook
+   * marker. Cleared when markHookObserved fires again.
+   */
+  private readonly hookFiresOverride = new Map<string, boolean>()
+  /** RW-E: timestamp of last hook payload per terminal. */
+  private readonly lastHookAt = new Map<string, number>()
+  /** RW-E: timestamp of last session-log tool_use observed per terminal. */
+  private readonly lastSessionLogToolUseAt = new Map<string, number>()
+  private staleCheckTimer: ReturnType<typeof setInterval> | null = null
   private readonly listeners = new Set<(snapshot: L0PathSnapshot) => void>()
 
   getSnapshot(): L0PathSnapshot | null {
@@ -186,16 +200,85 @@ export class L0Orchestrator {
     this.bindings.delete(terminalId)
     this.perTerminal.delete(terminalId)
     this.hookObservedTerminals.delete(terminalId)
+    this.hookFiresOverride.delete(terminalId)
+    this.lastHookAt.delete(terminalId)
+    this.lastSessionLogToolUseAt.delete(terminalId)
   }
 
-  /** RW-E forward: mark a terminal's hook as having fired at least once. */
-  markHookObserved(terminalId: string): void {
+  /** RW-E: mark a terminal's hook as having fired + timestamp for stale check. */
+  markHookObserved(terminalId: string, at: number = Date.now()): void {
     this.hookObservedTerminals.add(terminalId)
+    this.lastHookAt.set(terminalId, at)
+    // Clear any prior stale-downgrade override so the next refresh
+    // recognizes the hook as healthy again.
+    this.hookFiresOverride.delete(terminalId)
   }
 
-  /** RW-E forward: clear the observed flag — selector re-evaluates on next refresh. */
+  /** RW-E: clear the observed flag — selector re-evaluates on next refresh. */
   clearHookObserved(terminalId: string): void {
     this.hookObservedTerminals.delete(terminalId)
+  }
+
+  /** RW-E: session-log tool_use arrived. Used to evidence-guard the stale downgrade. */
+  observeSessionLogToolUse(terminalId: string, at: number = Date.now()): void {
+    this.lastSessionLogToolUseAt.set(terminalId, at)
+  }
+
+  /**
+   * RW-E: evaluate every bound terminal for stale-hook downgrades.
+   *
+   * A downgrade fires only when BOTH conditions hold:
+   *   - last hook payload was > thresholdMs ago (default 60s), AND
+   *   - a session-log tool_use was observed AFTER the last hook payload
+   *     (i.e. there is positive evidence of activity the hook missed).
+   *
+   * Pure silence keeps the selector stable; this avoids the naive
+   * "60s of no hook = downgrade" trap where an idle user would get
+   * demoted to L0-E even though the hook is healthy.
+   */
+  async runStaleCheck(now: number = Date.now(), thresholdMs: number = 60_000): Promise<string[]> {
+    const demoted: string[] = []
+    for (const terminalId of this.hookObservedTerminals) {
+      const lastHook = this.lastHookAt.get(terminalId) ?? 0
+      if (now - lastHook <= thresholdMs) {
+        continue
+      }
+      const lastSessionToolUse = this.lastSessionLogToolUseAt.get(terminalId) ?? 0
+      if (lastSessionToolUse <= lastHook) {
+        continue
+      }
+      this.hookObservedTerminals.delete(terminalId)
+      // Pin the negative signal so subsequent refresh() calls do not
+      // optimistically reassert hook_fires from the hookInstalled
+      // fallback. The override clears on the next markHookObserved.
+      this.hookFiresOverride.set(terminalId, false)
+      demoted.push(terminalId)
+    }
+    if (demoted.length === 0) {
+      return []
+    }
+    await Promise.all(demoted.map((id) => this.refresh({ terminalId: id })))
+    return demoted
+  }
+
+  /** RW-E: start a periodic stale-check tick. Idempotent. */
+  startStaleCheck(intervalMs: number = 20_000): void {
+    if (this.staleCheckTimer) return
+    this.staleCheckTimer = setInterval(() => {
+      void this.runStaleCheck().catch(() => undefined)
+    }, intervalMs)
+    // Let the process exit even if the timer is still scheduled.
+    if (typeof this.staleCheckTimer.unref === 'function') {
+      this.staleCheckTimer.unref()
+    }
+  }
+
+  /** RW-E: stop the periodic stale-check tick. */
+  stopStaleCheck(): void {
+    if (this.staleCheckTimer) {
+      clearInterval(this.staleCheckTimer)
+      this.staleCheckTimer = null
+    }
   }
 
   /**
@@ -213,7 +296,8 @@ export class L0Orchestrator {
       const merged: ProbeCapabilitiesOptions = {
         ...options,
         cwd: options.cwd ?? binding?.cwd,
-        settingsPathOverride: options.settingsPathOverride ?? binding?.settingsPathOverride
+        settingsPathOverride: options.settingsPathOverride ?? binding?.settingsPathOverride,
+        ccResultOverride: options.ccResultOverride ?? binding?.ccResultOverride
       }
       // Only set hookFiresObserved when the caller explicitly provided
       // it or when we have positive evidence. Leaving the field
@@ -223,6 +307,8 @@ export class L0Orchestrator {
       // upgrade when marker is present and no observation yet).
       if (options.hookFiresObserved !== undefined) {
         merged.hookFiresObserved = options.hookFiresObserved
+      } else if (this.hookFiresOverride.has(terminalId)) {
+        merged.hookFiresObserved = this.hookFiresOverride.get(terminalId)!
       } else if (this.hookObservedTerminals.has(terminalId)) {
         merged.hookFiresObserved = true
       }
@@ -258,10 +344,14 @@ export class L0Orchestrator {
   }
 
   dispose(): void {
+    this.stopStaleCheck()
     this.listeners.clear()
     this.latest = null
     this.perTerminal.clear()
     this.bindings.clear()
     this.hookObservedTerminals.clear()
+    this.hookFiresOverride.clear()
+    this.lastHookAt.clear()
+    this.lastSessionLogToolUseAt.clear()
   }
 }
