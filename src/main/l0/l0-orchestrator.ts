@@ -1,13 +1,14 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
 import { detectCcVersion, type CcDetectionResult } from './cc-version-detector'
+import { WORKPANE_MARKER } from './hook-installer'
 import {
   pickSupervisionPath,
   type L0PathDecision,
   type L0PathSelectorState
 } from './l0-path-selector'
 import { findMatchingProjectDir, resolveProjectsDir } from './session-log-locator'
-import fs from 'node:fs'
-import path from 'node:path'
-import os from 'node:os'
 
 /**
  * L0 orchestrator — Slice 2E.
@@ -43,8 +44,6 @@ export interface ProbeCapabilitiesOptions {
   /** Override the CC detection result for tests. */
   ccResultOverride?: CcDetectionResult
 }
-
-const WORKPANE_MARKER = 'workpane-managed'
 
 function defaultSettingsPath(): string {
   return path.join(os.homedir(), '.claude', 'settings.json')

@@ -178,7 +178,10 @@ export class HookServer {
 
   private writeTokenFile(): void {
     const dir = path.dirname(this.tokenFilePath)
-    fs.mkdirSync(dir, { recursive: true })
+    // mode 0o700 keeps the enclosing directory owner-only so a world-
+    // readable umask cannot expose the token file listing
+    // (security-reviewer LOW).
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
     // Write with mode 0o600 so only the current user can read the token.
     // Windows NTFS honours default DACL (current user + admins + system).
     const fd = fs.openSync(this.tokenFilePath, 'w', 0o600)
@@ -273,12 +276,21 @@ export class HookServer {
   }
 
   private tokensMatch(candidate: string): boolean {
-    // Constant-time comparison to avoid timing side channel.
+    // Constant-time comparison that never branches on length. Token is
+    // fixed-width hex so a length mismatch leaks nothing in practice,
+    // but padding both sides to a shared length keeps the compare
+    // branch-free for defense in depth (security-reviewer MEDIUM).
     const a = Buffer.from(this.token, 'utf8')
     const b = Buffer.from(candidate, 'utf8')
-    if (a.length !== b.length) {
-      return false
-    }
-    return crypto.timingSafeEqual(a, b)
+    const maxLen = Math.max(a.length, b.length)
+    const aPad = Buffer.alloc(maxLen)
+    a.copy(aPad)
+    const bPad = Buffer.alloc(maxLen)
+    b.copy(bPad)
+    // timingSafeEqual is constant-time for equal-length inputs.
+    const eqPadded = crypto.timingSafeEqual(aPad, bPad)
+    // Final AND with length equality keeps semantics correct without a
+    // short-circuit evaluation order that would reintroduce a branch.
+    return eqPadded && a.length === b.length
   }
 }

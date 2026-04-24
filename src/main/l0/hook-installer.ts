@@ -57,7 +57,7 @@ export interface UninstallOptions {
   _backupSuffix?: string
 }
 
-const WORKPANE_MARKER = 'workpane-managed'
+export const WORKPANE_MARKER = 'workpane-managed'
 
 function defaultSettingsPath(): string {
   return path.join(os.homedir(), '.claude', 'settings.json')
