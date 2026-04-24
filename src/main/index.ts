@@ -15,9 +15,14 @@ import { ApprovalDetector } from './approval-detector'
 import { BrowserManager } from './browser-manager'
 import { McpBrowserHandler } from './mcp-browser-server'
 import { HistoryStore } from './history-store'
+import { CcHookAdapter } from './l0/adapters/cc-hook-adapter'
+import { CcSessionLogAdapter } from './l0/adapters/cc-session-log-adapter'
 import { CcStreamJsonAdapter } from './l0/adapters/cc-stream-json-adapter'
 import { L0Orchestrator } from './l0/l0-orchestrator'
 import { L0Pipeline } from './l0/pipeline'
+import { HookServer } from './l0/hook-server'
+import { registerHookListener, unregisterHookListener } from './l0/hook-registry'
+import { SessionLogTailerPool } from './l0/session-log-tailer-pool'
 import * as path from 'path'
 import { LlmManager } from './llm/manager'
 import type {
@@ -944,6 +949,116 @@ app.whenReady().then(() => {
     }
   })
   terminalManager.setL0Pipeline(l0Pipeline)
+
+  // RW-B runtime wiring — per-terminal HookServer + shared tailer pool.
+  // Kept in-scope so the callbacks close over these instances.
+  const hookServersByTerminal = new Map<string, HookServer>()
+  const tailerPool = new SessionLogTailerPool()
+  const tailerHandles = new Map<string, { release: () => void }>()
+
+  terminalManager.setL0RuntimeHooks({
+    onClaudeBind: async ({ terminalId, workspacePath }) => {
+      // HookServer per terminal — listens + filters by cwd/session_id.
+      if (!hookServersByTerminal.has(terminalId)) {
+        const server = new HookServer({ terminalId, workspacePath })
+        server.on('payload', ({ terminalId: id, payload }) => {
+          l0Orchestrator.markHookObserved(id)
+          l0Pipeline.ingest(id, payload, workspacePath)
+        })
+        server.on('auth-failure', (f) => {
+          console.warn(`[hook-server:${terminalId}] auth-failure: ${f.reason}`)
+        })
+        try {
+          const { socketPath, tokenFilePath } = await server.start()
+          registerHookListener({
+            pid: process.pid,
+            terminalId,
+            socketPath,
+            tokenPath: tokenFilePath,
+            workspacePath,
+            startedAt: Date.now()
+          })
+          hookServersByTerminal.set(terminalId, server)
+          // Install the hook adapter on the pipeline for this terminal so
+          // frame payloads are parsed as hook events instead of stdout.
+          l0Pipeline.setAdapterFor(terminalId, new CcHookAdapter())
+        } catch (error) {
+          console.warn(`[hook-server:${terminalId}] start failed:`, error)
+        }
+      }
+
+      // Session-log tailer via pool (shared by cwd).
+      if (!tailerHandles.has(terminalId)) {
+        // Parallel adapter for session-log path; used when hook is absent.
+        // For now we keep the hook adapter on setAdapterFor; session-log
+        // envelopes will route through a second ingest path implemented
+        // in RW-C dedup. As a bootstrap we just wire the envelope to a
+        // no-op handler that RW-C will replace.
+        const handle = tailerPool.acquire({
+          terminalId,
+          cwd: workspacePath,
+          onEnvelope: (envelope) => {
+            // Bridge to a dedicated session-log adapter so the pipeline
+            // can produce L0Events without being tied to the hook adapter.
+            // Dedup (RW-C) will suppress duplicates between sources.
+            const sessionAdapter = sessionLogAdapterByTerminal.get(envelope.terminalId) ??
+              sessionLogAdapterByTerminal
+                .set(envelope.terminalId, new CcSessionLogAdapter())
+                .get(envelope.terminalId)!
+            const result = sessionAdapter.ingest(envelope.terminalId, envelope.payload)
+            if (result.kind === 'event') {
+              for (const _event of result.events) {
+                // RW-C will replace this path with a dedup layer. For
+                // now we route through pipeline.ingest so monitoring
+                // state still updates from the session-log source.
+                l0Pipeline.ingest(envelope.terminalId, envelope.payload, workspacePath)
+              }
+            }
+          }
+        })
+        tailerHandles.set(terminalId, handle)
+      }
+
+      // Refresh the per-terminal snapshot so Settings reflects the new
+      // capability immediately.
+      l0Orchestrator.bindTerminal({ terminalId, cwd: workspacePath })
+      await l0Orchestrator.refresh({ terminalId })
+    },
+    onTerminalClose: async (terminalId) => {
+      const server = hookServersByTerminal.get(terminalId)
+      if (server) {
+        hookServersByTerminal.delete(terminalId)
+        unregisterHookListener(process.pid, terminalId)
+        try {
+          await server.dispose()
+        } catch {
+          // best effort
+        }
+      }
+      const handle = tailerHandles.get(terminalId)
+      if (handle) {
+        tailerHandles.delete(terminalId)
+        try {
+          handle.release()
+        } catch {
+          // best effort
+        }
+      }
+      const sessionAdapter = sessionLogAdapterByTerminal.get(terminalId)
+      if (sessionAdapter) {
+        sessionLogAdapterByTerminal.delete(terminalId)
+        try {
+          sessionAdapter.dispose()
+        } catch {
+          // best effort
+        }
+      }
+      l0Pipeline.clearAdapterFor(terminalId)
+      l0Orchestrator.unbindTerminal(terminalId)
+    }
+  })
+
+  const sessionLogAdapterByTerminal = new Map<string, CcSessionLogAdapter>()
 
   // Slice 2E — L0 orchestrator probe + IPC surface. The orchestrator only
   // computes path-selector state; actual adapter swap at runtime is wired

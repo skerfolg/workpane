@@ -36,6 +36,8 @@ export interface HookServerEvents {
   payload: [{ terminalId: string; payload: Record<string, unknown> }]
   /** Emitted when a connection fails auth or sends a malformed frame. */
   'auth-failure': [{ reason: string; remoteAddress?: string }]
+  /** RW-B/D4/G2: emitted when a frame is dropped by cwd / session_id filter. */
+  filtered: [{ reason: 'cwd_mismatch' | 'session_id_mismatch'; payload: Record<string, unknown> }]
   listening: [{ socketPath: string }]
   error: [Error]
 }
@@ -51,6 +53,14 @@ export interface HookServerOptions {
   tokenOverride?: string
   /** Maximum frame size per message (bytes). Defaults to 64 KB. */
   maxFrameBytes?: number
+  /**
+   * RW-B + D4: workspace path this terminal runs in. When set, payloads
+   * whose `cwd` field does not match (after normalization) are dropped
+   * before reaching listeners. This prevents the CC bridge's broadcast-
+   * to-all-sockets behavior from lighting up every terminal on a single
+   * hook fire.
+   */
+  workspacePath?: string
 }
 
 const DEFAULT_MAX_FRAME_BYTES = 64 * 1024
@@ -88,9 +98,16 @@ export class HookServer {
   private readonly maxFrameBytes: number
   private readonly token: string
   private readonly terminalId: string
+  /** Normalized workspace path for cwd filter. Empty string = no filter. */
+  private readonly workspacePathNormalized: string
   private server: net.Server | null = null
   private disposed = false
   private authFailureCount = 0
+  /** Session id captured from the first SessionStart payload for this terminal. */
+  private capturedSessionId: string | null = null
+  /** Counters exposed via diagnostics for RW-R7 / R8. */
+  private filteredCwdMismatchCount = 0
+  private filteredSessionMismatchCount = 0
 
   constructor(options: HookServerOptions) {
     this.terminalId = options.terminalId
@@ -98,6 +115,20 @@ export class HookServer {
     this.tokenFilePath = options.tokenFilePath ?? defaultTokenFilePath(options.terminalId)
     this.maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES
     this.token = options.tokenOverride ?? crypto.randomBytes(TOKEN_BYTES).toString('hex')
+    this.workspacePathNormalized = options.workspacePath
+      ? normalizeWorkspacePath(options.workspacePath)
+      : ''
+  }
+
+  /** Test-only diagnostics. */
+  get _filteredCwdCountForTest(): number {
+    return this.filteredCwdMismatchCount
+  }
+  get _filteredSessionCountForTest(): number {
+    return this.filteredSessionMismatchCount
+  }
+  get _capturedSessionIdForTest(): string | null {
+    return this.capturedSessionId
   }
 
   on<E extends keyof HookServerEvents>(event: E, listener: (...args: HookServerEvents[E]) => void): this {
@@ -266,6 +297,11 @@ export class HookServer {
           continue
         }
 
+        if (!this.passesCorrelationFilter(frame)) {
+          // Already counted + emitted via passesCorrelationFilter
+          continue
+        }
+
         this.emitter.emit('payload', { terminalId: this.terminalId, payload: frame })
       }
     })
@@ -273,6 +309,53 @@ export class HookServer {
     socket.on('error', (error) => {
       this.emitter.emit('error', error)
     })
+  }
+
+  /**
+   * D4 / G2: accept the frame only if it was emitted by the CC process
+   * running in our terminal's workspace. When no workspacePath is set
+   * (e.g. tests, or pre-binding phase) we accept everything, which
+   * preserves the previous behavior.
+   */
+  private passesCorrelationFilter(frame: Record<string, unknown>): boolean {
+    if (this.workspacePathNormalized) {
+      const frameCwd = typeof frame.cwd === 'string' ? frame.cwd : null
+      if (frameCwd != null) {
+        const normalized = normalizeWorkspacePath(frameCwd)
+        if (normalized !== this.workspacePathNormalized) {
+          this.filteredCwdMismatchCount += 1
+          this.emitter.emit('filtered', { reason: 'cwd_mismatch', payload: frame })
+          return false
+        }
+      }
+    }
+
+    const frameSessionId = typeof frame.session_id === 'string' ? frame.session_id : null
+    const hookEvent = typeof frame.hook_event_name === 'string' ? frame.hook_event_name : ''
+
+    if (frameSessionId) {
+      if (this.capturedSessionId === null) {
+        // Capture on first SessionStart for this terminal; other lifecycle
+        // events are also acceptable first arrivals since CC may not
+        // emit SessionStart in every configuration.
+        this.capturedSessionId = frameSessionId
+      } else if (this.capturedSessionId !== frameSessionId) {
+        // SessionEnd of the captured id releases the binding so a new
+        // session in the same terminal can take over.
+        if (hookEvent === 'SessionEnd' && this.capturedSessionId === frameSessionId) {
+          this.capturedSessionId = null
+        } else {
+          this.filteredSessionMismatchCount += 1
+          this.emitter.emit('filtered', { reason: 'session_id_mismatch', payload: frame })
+          return false
+        }
+      }
+      if (hookEvent === 'SessionEnd' && this.capturedSessionId === frameSessionId) {
+        this.capturedSessionId = null
+      }
+    }
+
+    return true
   }
 
   private tokensMatch(candidate: string): boolean {
@@ -293,4 +376,15 @@ export class HookServer {
     // short-circuit evaluation order that would reintroduce a branch.
     return eqPadded && a.length === b.length
   }
+}
+
+/**
+ * Normalize a workspace path for cross-platform cwd comparison
+ * (RW-R7). On Windows we lowercase because NTFS is case-insensitive
+ * (so CC might report `C:\Foo` while WP cached `C:\foo`); on POSIX we
+ * preserve case. Trailing slashes are stripped on both.
+ */
+function normalizeWorkspacePath(p: string): string {
+  const resolved = path.resolve(p).replace(/[\\/]+$/, '')
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }

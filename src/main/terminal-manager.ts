@@ -99,6 +99,10 @@ export class TerminalManager {
   private terminalDisposables: Map<string, Array<{ dispose: () => void }>> = new Map()
   private approvalDetector: import('./approval-detector').ApprovalDetector | null = null
   private l0Pipeline: import('./l0/pipeline').L0Pipeline | null = null
+  private l0RuntimeHooks: {
+    onClaudeBind: (args: { terminalId: string; workspacePath: string }) => Promise<void> | void
+    onTerminalClose: (terminalId: string) => Promise<void> | void
+  } | null = null
 
   getDefaultShell(): string {
     if (this.cachedShell) return this.cachedShell
@@ -186,6 +190,22 @@ export class TerminalManager {
     this.l0Pipeline = pipeline
   }
 
+  /**
+   * RW-B: injected by main/index.ts to start HookServer + tailer-pool
+   * subscription whenever a terminal is marked as 'claude-code' vendor
+   * and binds its cwd. Optional so unit tests that only wire a
+   * TerminalManager do not need the L0 runtime plumbing.
+   */
+  setL0RuntimeHooks(hooks: {
+    onClaudeBind: (args: {
+      terminalId: string
+      workspacePath: string
+    }) => Promise<void> | void
+    onTerminalClose: (terminalId: string) => Promise<void> | void
+  }): void {
+    this.l0RuntimeHooks = hooks
+  }
+
   private buildSpawnEnv(env?: NodeJS.ProcessEnv): Record<string, string> {
     return Object.fromEntries(
       Object.entries(env ?? (process.env as NodeJS.ProcessEnv))
@@ -218,6 +238,17 @@ export class TerminalManager {
       // Bind BEFORE spawn so any L0 chunks emitted on the very first PTY
       // tick are recognized by the pipeline (Code-reviewer HIGH-2 race fix).
       this.l0Pipeline?.bindVendor(id, sanitizedVendorHint)
+      // RW-B: claude-code terminals also bring up a per-terminal
+      // HookServer + join the session-log tailer pool. main/index.ts
+      // wires the actual components via setL0RuntimeHooks; we just
+      // trigger the callback here.
+      if (sanitizedVendorHint === 'claude-code' && this.l0RuntimeHooks) {
+        void Promise.resolve(
+          this.l0RuntimeHooks.onClaudeBind({ terminalId: id, workspacePath: resolvedCwd })
+        ).catch((error) => {
+          console.warn(`[l0-runtime] onClaudeBind failed for ${id}:`, error)
+        })
+      }
     }
 
     const term = pty.spawn(resolvedShell, args, {
@@ -270,8 +301,19 @@ export class TerminalManager {
     this.scrollbackBuffers.delete(id)
     this.scrollbackByteCounts.delete(id)
     this.terminalWorkspaces.delete(id)
+    const priorVendor = this.terminalVendorHints.get(id)
     this.terminalVendorHints.delete(id)
     this.l0Pipeline?.reset(id)
+    // RW-B: inform main-process L0 runtime so HookServer is disposed
+    // and the tailer-pool reference is released. We fire this even for
+    // non-claude-code terminals because the runtime may own other
+    // per-terminal state (telemetry, dedup buffers) that deserves
+    // cleanup. Errors are swallowed — kill must always succeed.
+    if (priorVendor === 'claude-code' && this.l0RuntimeHooks) {
+      void Promise.resolve(this.l0RuntimeHooks.onTerminalClose(id)).catch((error) => {
+        console.warn(`[l0-runtime] onTerminalClose failed for ${id}:`, error)
+      })
+    }
   }
 
   get(id: string): pty.IPty | undefined {
