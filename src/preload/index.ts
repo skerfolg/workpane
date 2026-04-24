@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   ApprovalDetectedEvent,
+  L0Status,
+  L0StatusChangedEvent,
+  L0Vendor,
   ManualTaskRecord,
   MonitoringHistoryEvent,
   MonitoringHistoryStoreStatus,
@@ -20,8 +23,26 @@ const isTestEnv = process.env.NODE_ENV === 'test'
 const terminalTestOpenListeners = new Map<string, Set<(filePath: string) => void>>()
 
 const terminalAPI = {
-  create: (id: string, shell?: string, cwd?: string) =>
-    ipcRenderer.invoke('terminal:create', { id, shell, cwd }),
+  create: (
+    id: string,
+    shell?: string,
+    cwd?: string,
+    options?: { vendorHint?: L0Vendor; spawnArgs?: string[] }
+  ) =>
+    ipcRenderer.invoke('terminal:create', {
+      id,
+      shell,
+      cwd,
+      vendorHint: options?.vendorHint,
+      spawnArgs: options?.spawnArgs
+    }),
+  getL0Status: (id: string): Promise<L0Status> =>
+    ipcRenderer.invoke('terminal:l0-status', { id }),
+  onL0StatusChanged: (callback: (event: L0StatusChangedEvent) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: L0StatusChangedEvent) => callback(data)
+    ipcRenderer.on('terminal:l0-status-changed', handler)
+    return () => ipcRenderer.removeListener('terminal:l0-status-changed', handler)
+  },
   write: (id: string, data: string) =>
     ipcRenderer.send('terminal:write', { id, data }),
   resize: (id: string, cols: number, rows: number) =>

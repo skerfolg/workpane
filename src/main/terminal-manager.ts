@@ -1,5 +1,92 @@
 import * as pty from 'node-pty'
 import os from 'os'
+import { spawnSync } from 'child_process'
+import { isL0Vendor, type L0Status, type L0Vendor } from '../shared/types'
+
+const SHELL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/
+
+function resolveWindowsExecutable(name: string): { cmd: string; prefix: readonly string[] } {
+  if (name.includes('\\') || name.includes('/')) {
+    return { cmd: name, prefix: [] }
+  }
+  if (os.platform() !== 'win32') {
+    return { cmd: name, prefix: [] }
+  }
+  if (!SHELL_NAME_PATTERN.test(name)) {
+    return { cmd: name, prefix: [] }
+  }
+  const result = spawnSync('where', [name], { encoding: 'utf8', timeout: 3000, shell: false })
+  if (result.status !== 0 || !result.stdout) {
+    return { cmd: name, prefix: [] }
+  }
+  const candidates = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const exe = candidates.find((p) => p.toLowerCase().endsWith('.exe'))
+  if (exe) return { cmd: exe, prefix: [] }
+  const cmdScript = candidates.find((p) => {
+    const lower = p.toLowerCase()
+    return lower.endsWith('.cmd') || lower.endsWith('.bat')
+  })
+  if (cmdScript) {
+    return { cmd: 'cmd.exe', prefix: ['/d', '/s', '/c', cmdScript] }
+  }
+  return { cmd: candidates[0] ?? name, prefix: [] }
+}
+
+export interface TerminalCreateOptions {
+  shell?: string
+  cwd?: string
+  env?: NodeJS.ProcessEnv
+  vendorHint?: L0Vendor
+  spawnArgs?: string[]
+}
+
+const MAX_SPAWN_ARGS = 8
+const ALLOWED_SPAWN_ARG_PATTERN = /^[A-Za-z0-9_.:/@=-]{1,256}$/
+const BLOCKED_SPAWN_ARG_FLAGS = new Set([
+  '-c',
+  '-command',
+  '-encodedcommand',
+  '--command',
+  '--encodedcommand',
+  '--init-file',
+  '--rcfile',
+  '-i',
+  '-exec',
+  '-e'
+])
+
+function sanitizeSpawnArgs(args: string[] | undefined): string[] | undefined {
+  if (!args || args.length === 0) {
+    return undefined
+  }
+  if (args.length > MAX_SPAWN_ARGS) {
+    throw new Error(`spawnArgs exceeds ${MAX_SPAWN_ARGS} entries`)
+  }
+  const validated: string[] = []
+  for (const arg of args) {
+    if (typeof arg !== 'string') {
+      throw new Error('spawnArgs entries must be strings')
+    }
+    if (!ALLOWED_SPAWN_ARG_PATTERN.test(arg)) {
+      throw new Error(`spawnArgs entry rejected by allowlist: ${arg}`)
+    }
+    if (BLOCKED_SPAWN_ARG_FLAGS.has(arg.toLowerCase())) {
+      throw new Error(`spawnArgs entry is a blocked shell flag: ${arg}`)
+    }
+    validated.push(arg)
+  }
+  return validated
+}
+
+function sanitizeVendorHint(vendorHint: unknown): L0Vendor | undefined {
+  if (vendorHint === undefined) {
+    return undefined
+  }
+  return isL0Vendor(vendorHint) ? vendorHint : undefined
+}
 
 export class TerminalManager {
   private terminals: Map<string, pty.IPty> = new Map()
@@ -7,9 +94,11 @@ export class TerminalManager {
   private scrollbackBuffers: Map<string, string[]> = new Map()
   private scrollbackByteCounts: Map<string, number> = new Map()
   private terminalWorkspaces: Map<string, string> = new Map()
+  private terminalVendorHints: Map<string, L0Vendor> = new Map()
   private readonly MAX_BUFFER_BYTES = 524_288  // 512KB
   private terminalDisposables: Map<string, Array<{ dispose: () => void }>> = new Map()
   private approvalDetector: import('./approval-detector').ApprovalDetector | null = null
+  private l0Pipeline: import('./l0/pipeline').L0Pipeline | null = null
 
   getDefaultShell(): string {
     if (this.cachedShell) return this.cachedShell
@@ -50,7 +139,11 @@ export class TerminalManager {
       byteCount -= Buffer.byteLength(removed)
     }
     this.scrollbackByteCounts.set(id, byteCount)
-    this.approvalDetector?.check(id, data, this.getWorkspace(id) ?? '')
+    const suppressApprovalDetector =
+      this.l0Pipeline?.ingest(id, data, this.getWorkspace(id) ?? '')?.suppressApprovalDetector ?? false
+    if (!suppressApprovalDetector) {
+      this.approvalDetector?.check(id, data, this.getWorkspace(id) ?? '')
+    }
   }
 
   getScrollback(id: string): string {
@@ -89,6 +182,10 @@ export class TerminalManager {
     this.approvalDetector = detector
   }
 
+  setL0Pipeline(pipeline: import('./l0/pipeline').L0Pipeline): void {
+    this.l0Pipeline = pipeline
+  }
+
   private buildSpawnEnv(env?: NodeJS.ProcessEnv): Record<string, string> {
     return Object.fromEntries(
       Object.entries(env ?? (process.env as NodeJS.ProcessEnv))
@@ -96,29 +193,51 @@ export class TerminalManager {
     )
   }
 
-  create(id: string, shell?: string, cwd?: string, env?: NodeJS.ProcessEnv): void {
+  create(id: string, options: TerminalCreateOptions = {}): void {
     const _t = performance.now()
     console.log(`[PERF][Main] TerminalManager.create start id=${id}`)
     if (this.terminals.has(id)) return
-    const s = shell || this.getDefaultShell()
-    const resolvedCwd = cwd || process.env.HOME || process.env.USERPROFILE || '.'
+    const requestedShell = options.shell || this.getDefaultShell()
+    const { cmd: resolvedShell, prefix: shellPrefix } = resolveWindowsExecutable(requestedShell)
+    const resolvedCwd = options.cwd || process.env.HOME || process.env.USERPROFILE || '.'
 
+    const sanitizedSpawnArgs = sanitizeSpawnArgs(options.spawnArgs)
+    const sanitizedVendorHint = sanitizeVendorHint(options.vendorHint)
+
+    const args: string[] = [...shellPrefix]
     // PowerShell ignores node-pty's cwd option; pass -WorkingDirectory explicitly
-    const args: string[] = []
-    if (resolvedCwd && this.isPowerShell(s)) {
+    if (resolvedCwd && this.isPowerShell(resolvedShell)) {
       args.push('-WorkingDirectory', resolvedCwd)
     }
+    if (sanitizedSpawnArgs) {
+      args.push(...sanitizedSpawnArgs)
+    }
 
-    const term = pty.spawn(s, args, {
+    if (sanitizedVendorHint) {
+      this.terminalVendorHints.set(id, sanitizedVendorHint)
+      // Bind BEFORE spawn so any L0 chunks emitted on the very first PTY
+      // tick are recognized by the pipeline (Code-reviewer HIGH-2 race fix).
+      this.l0Pipeline?.bindVendor(id, sanitizedVendorHint)
+    }
+
+    const term = pty.spawn(resolvedShell, args, {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
       cwd: resolvedCwd,
-      env: this.buildSpawnEnv(env)
+      env: this.buildSpawnEnv(options.env)
     })
     this.terminals.set(id, term)
     this.terminalWorkspaces.set(id, resolvedCwd)
-    console.log(`[PERF][Main] TerminalManager.create done id=${id} shell=${s} ${(performance.now() - _t).toFixed(1)}ms`)
+    console.log(`[PERF][Main] TerminalManager.create done id=${id} requested=${requestedShell} resolved=${resolvedShell} ${(performance.now() - _t).toFixed(1)}ms`)
+  }
+
+  getVendorHint(id: string): L0Vendor | undefined {
+    return this.terminalVendorHints.get(id)
+  }
+
+  getL0Status(id: string): L0Status {
+    return this.l0Pipeline?.getStatus(id) ?? { terminalId: id, mode: 'inactive' }
   }
 
   private isPowerShell(shell: string): boolean {
@@ -151,6 +270,8 @@ export class TerminalManager {
     this.scrollbackBuffers.delete(id)
     this.scrollbackByteCounts.delete(id)
     this.terminalWorkspaces.delete(id)
+    this.terminalVendorHints.delete(id)
+    this.l0Pipeline?.reset(id)
   }
 
   get(id: string): pty.IPty | undefined {
@@ -168,6 +289,8 @@ export class TerminalManager {
     this.scrollbackBuffers.clear()
     this.scrollbackByteCounts.clear()
     this.terminalWorkspaces.clear()
+    this.terminalVendorHints.clear()
     this.terminalDisposables.clear()
+    this.l0Pipeline?.dispose()
   }
 }

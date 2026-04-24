@@ -1,6 +1,9 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   ApprovalDetectedEvent,
+  L0Status,
+  L0StatusChangedEvent,
+  L0Vendor,
   ManualTaskRecord,
   MonitoringHistoryEvent,
   MonitoringHistoryStoreStatus,
@@ -18,8 +21,13 @@ import type {
   LlmStorageStatus
 } from '../shared/types'
 
+export interface TerminalCreateOptions {
+  vendorHint?: L0Vendor
+  spawnArgs?: string[]
+}
+
 export interface TerminalAPI {
-  create: (id: string, shell?: string, cwd?: string) => Promise<void>
+  create: (id: string, shell?: string, cwd?: string, options?: TerminalCreateOptions) => Promise<void>
   write: (id: string, data: string) => void
   resize: (id: string, cols: number, rows: number) => void
   kill: (id: string) => Promise<void>
@@ -30,6 +38,8 @@ export interface TerminalAPI {
   onMonitoringUpsert: (callback: (event: SessionMonitoringUpsertEvent) => void) => () => void
   onMonitoringClear: (callback: (event: SessionMonitoringClearEvent) => void) => () => void
   onMonitoringTransition: (callback: (event: SessionMonitoringTransitionEvent) => void) => () => void
+  getL0Status: (id: string) => Promise<L0Status>
+  onL0StatusChanged: (callback: (event: L0StatusChangedEvent) => void) => () => void
   testOpenFile?: (terminalId: string, filePath: string) => void
   onTestOpenFile?: (terminalId: string, callback: (filePath: string) => void) => () => void
 }

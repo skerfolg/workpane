@@ -15,6 +15,7 @@ import { ApprovalDetector } from './approval-detector'
 import { BrowserManager } from './browser-manager'
 import { McpBrowserHandler } from './mcp-browser-server'
 import { HistoryStore } from './history-store'
+import { L0Pipeline } from './l0/pipeline'
 import * as path from 'path'
 import { LlmManager } from './llm/manager'
 import type {
@@ -281,7 +282,14 @@ function createWindow(): void {
   console.log(`[PERF][Main] createWindow: done ${(performance.now() - _perfStart).toFixed(1)}ms`)
 }
 
-function ensureTerminalCreated(id: string, shellPath?: string, cwd?: string, env?: NodeJS.ProcessEnv): void {
+function ensureTerminalCreated(
+  id: string,
+  shellPath?: string,
+  cwd?: string,
+  env?: NodeJS.ProcessEnv,
+  vendorHint?: import('../shared/types').L0Vendor,
+  spawnArgs?: string[]
+): void {
   if (process.env.NODE_ENV === 'test') {
     return
   }
@@ -290,7 +298,7 @@ function ensureTerminalCreated(id: string, shellPath?: string, cwd?: string, env
     return
   }
 
-  terminalManager.create(id, shellPath, cwd, env)
+  terminalManager.create(id, { shell: shellPath, cwd, env, vendorHint, spawnArgs })
   const term = terminalManager.get(id)
   if (!term) return
 
@@ -327,8 +335,18 @@ function ensureTerminalCreated(id: string, shellPath?: string, cwd?: string, env
 }
 
 // IPC handlers for terminal
-ipcMain.handle('terminal:create', (_event, { id, shell, cwd }: { id: string; shell?: string; cwd?: string }) => {
-  ensureTerminalCreated(id, shell, cwd)
+ipcMain.handle('terminal:create', (_event, params: {
+  id: string
+  shell?: string
+  cwd?: string
+  vendorHint?: import('../shared/types').L0Vendor
+  spawnArgs?: string[]
+}) => {
+  ensureTerminalCreated(params.id, params.shell, params.cwd, undefined, params.vendorHint, params.spawnArgs)
+})
+
+ipcMain.handle('terminal:l0-status', (_event, { id }: { id: string }) => {
+  return terminalManager.getL0Status(id)
 })
 
 ipcMain.on('terminal:write', (_event, { id, data }: { id: string; data: string }) => {
@@ -911,6 +929,19 @@ app.whenReady().then(() => {
     }
   })
   terminalManager.setApprovalDetector(approvalDetector)
+  const l0Pipeline = new L0Pipeline((state) => {
+    emitMonitoringUpsert(state)
+  })
+  l0Pipeline.onStatusChanged((status) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal:l0-status-changed', {
+        terminalId: status.terminalId,
+        status,
+        timestamp: Date.now()
+      })
+    }
+  })
+  terminalManager.setL0Pipeline(l0Pipeline)
   const customPatterns = (settingsManager.get('notification.customPatterns') ?? []) as Array<{ name: string; pattern: string }>
   approvalDetector.setCustomPatterns(customPatterns)
 

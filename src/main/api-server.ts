@@ -49,8 +49,14 @@ export class ApiServer {
 
     switch (method) {
       case 'terminal.create': {
-        const { id, shell, cwd } = params as { id: string; shell?: string; cwd?: string }
-        this.terminalManager.create(id, shell, cwd)
+        const { id, shell, cwd, vendorHint, spawnArgs } = params as {
+          id: string
+          shell?: string
+          cwd?: string
+          vendorHint?: import('../shared/types').L0Vendor
+          spawnArgs?: string[]
+        }
+        this.terminalManager.create(id, { shell, cwd, vendorHint, spawnArgs })
         return { id }
       }
 
