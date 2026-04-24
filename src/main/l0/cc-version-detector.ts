@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
-import path from 'node:path'
 import { checkCompat, parseCcVersion, type CcCompatResult, type CcVersion } from './cc-compat'
 
 /**
@@ -166,8 +165,3 @@ export function isCompatible(result: CcDetectionResult): boolean {
 
 // Re-export so consumers can import the full surface from one place.
 export type { CcCompatResult, CcVersion } from './cc-compat'
-
-// Keep Node typings happy when os/path are tree-shaken in builds that
-// drop the Windows branch. Referencing them here is cheap and avoids
-// "imported but unused" lints on macOS/Linux.
-void path

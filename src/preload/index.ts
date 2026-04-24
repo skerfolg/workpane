@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { L0PathSnapshotShape } from './index'
 import type {
   ApprovalDetectedEvent,
   L0Status,
@@ -280,8 +281,8 @@ const l0API = {
   refreshPath: () => ipcRenderer.invoke('l0:refresh-path'),
   installHooks: () => ipcRenderer.invoke('l0:install-hooks'),
   uninstallHooks: () => ipcRenderer.invoke('l0:uninstall-hooks'),
-  onPathSnapshot: (callback: (snapshot: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => callback(data)
+  onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: L0PathSnapshotShape): void => callback(data)
     ipcRenderer.on('l0:path-snapshot', handler)
     return () => ipcRenderer.removeListener('l0:path-snapshot', handler)
   },
@@ -347,4 +348,6 @@ if (process.contextIsolated) {
   window.clipboard = clipboardAPI
   // @ts-ignore (define in dts)
   window.browser = browserAPI
+  // @ts-ignore (define in dts)
+  window.l0 = l0API
 }
