@@ -18,7 +18,14 @@ function scratchDir(): string {
 function installedSettings(dir: string): string {
   const p = path.join(dir, 'settings.json')
   fs.writeFileSync(p, JSON.stringify({
-    hooks: { PreToolUse: { 'workpane-managed': true, command: '/wp' } }
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: '.*',
+          hooks: [{ type: 'command', command: '/wp', 'workpane-managed': true }]
+        }
+      ]
+    }
   }))
   return p
 }

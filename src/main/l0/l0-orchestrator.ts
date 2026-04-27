@@ -93,8 +93,26 @@ export function detectHookInstallStatus(settingsPath: string): {
     return { installed: false, reason: 'no hooks field' }
   }
   for (const value of Object.values(hooks)) {
+    // Canonical CC array form: [{matcher, hooks: [{type,command,workpane-managed}]}]
+    if (Array.isArray(value)) {
+      const hit = value.some((entry) => {
+        if (!isRecord(entry)) return false
+        const inner = entry.hooks
+        if (!Array.isArray(inner)) return false
+        return inner.some(
+          (h) => isRecord(h) && h[WORKPANE_MARKER] === true
+        )
+      })
+      if (hit) {
+        return { installed: true, reason: 'found workpane-managed hook entry (array form)' }
+      }
+    }
+    // Legacy buggy form: {workpane-managed: true, command: ...} — pre-fix install.
     if (isRecord(value) && value[WORKPANE_MARKER] === true) {
-      return { installed: true, reason: 'found workpane-managed hook entry' }
+      return {
+        installed: true,
+        reason: 'found legacy workpane-managed hook entry — re-install will migrate'
+      }
     }
   }
   return { installed: false, reason: 'no workpane-managed hook entry' }

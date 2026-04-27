@@ -118,6 +118,54 @@ function hooksField(settings: Record<string, unknown>): Record<string, unknown> 
   return isRecord(raw) ? raw : {}
 }
 
+/**
+ * Build a CC-canonical hook entry validated by Slice 0 spike (capture-cc-hook.mjs):
+ *
+ *   { matcher: '.*', hooks: [{ type: 'command', command, 'workpane-managed': true }] }
+ *
+ * The marker lives on the inner hook record (not the matcher object) because
+ * CC's settings-validator may reject unknown sibling keys at the matcher level
+ * — but tolerates them on the command record (verified empirically by spike).
+ */
+function makeWPArrayEntry(command: string): Record<string, unknown> {
+  return {
+    matcher: '.*',
+    hooks: [
+      {
+        type: 'command',
+        command,
+        [WORKPANE_MARKER]: true
+      }
+    ]
+  }
+}
+
+function isWPArrayEntry(entry: unknown): boolean {
+  if (!isRecord(entry)) return false
+  const innerHooks = entry.hooks
+  if (!Array.isArray(innerHooks)) return false
+  return innerHooks.some(
+    (h) => isRecord(h) && (h as Record<string, unknown>)[WORKPANE_MARKER] === true
+  )
+}
+
+/**
+ * Pre-fix legacy form (commits a07d0e2..ffce998 wrote this — CC rejects it):
+ *
+ *   "PreToolUse": { "workpane-managed": true, "command": "..." }
+ *
+ * stripWorkpaneHooks tolerates this so users hit by the bug can self-heal
+ * via Uninstall, and mergeHooks treats it as "not yet installed" so a fresh
+ * install replaces it with the canonical array form.
+ */
+function isLegacyWPObjectEntry(entry: unknown): boolean {
+  return (
+    isRecord(entry) &&
+    !Array.isArray(entry) &&
+    entry[WORKPANE_MARKER] === true
+  )
+}
+
 function mergeHooks(
   existing: Record<string, unknown>,
   additions: HookDefinition[]
@@ -127,31 +175,59 @@ function mergeHooks(
   const skipped: string[] = []
   for (const def of additions) {
     const prior = merged[def.event]
-    if (typeof prior === 'string' || isRecord(prior)) {
+    let nextArray: unknown[]
+
+    if (Array.isArray(prior)) {
+      nextArray = prior.slice()
+    } else if (prior === undefined) {
+      nextArray = []
+    } else if (isLegacyWPObjectEntry(prior)) {
+      // Self-heal: drop the buggy legacy WP entry; we'll append canonical below.
+      nextArray = []
+    } else {
+      // User has a non-array, non-WP value — leave their settings alone.
       skipped.push(def.event)
       continue
     }
-    merged[def.event] = {
-      [WORKPANE_MARKER]: true,
-      command: def.command
+
+    const canonical = makeWPArrayEntry(def.command)
+    const existingIdx = nextArray.findIndex(isWPArrayEntry)
+    if (existingIdx >= 0) {
+      // Refresh our entry (command path may have moved between dev/prod).
+      nextArray[existingIdx] = canonical
+    } else {
+      nextArray.push(canonical)
+      addedCount += 1
     }
-    addedCount += 1
+
+    merged[def.event] = nextArray
   }
   return { merged, addedCount, skipped }
 }
 
-function stripWorkpaneHooks(hooks: Record<string, unknown>, events: string[]): {
-  stripped: Record<string, unknown>
-  removedCount: number
-} {
+function stripWorkpaneHooks(
+  hooks: Record<string, unknown>,
+  events: string[]
+): { stripped: Record<string, unknown>; removedCount: number } {
   const stripped = cloneRecord(hooks)
   let removedCount = 0
   for (const event of events) {
     const prior = stripped[event]
-    if (isRecord(prior) && prior[WORKPANE_MARKER] === true) {
+
+    if (Array.isArray(prior)) {
+      const filtered = prior.filter((entry) => !isWPArrayEntry(entry))
+      if (filtered.length === prior.length) continue
+      removedCount += prior.length - filtered.length
+      if (filtered.length === 0) {
+        delete stripped[event]
+      } else {
+        stripped[event] = filtered
+      }
+    } else if (isLegacyWPObjectEntry(prior)) {
       delete stripped[event]
       removedCount += 1
     }
+    // string / non-WP object → user-owned, leave untouched.
   }
   return { stripped, removedCount }
 }
@@ -200,11 +276,25 @@ export function installHooks(options: InstallOptions): HookInstallResult {
     }
   }
 
-  // Already-installed guard
+  // Already-installed guard. Legacy buggy entries are NOT considered installed —
+  // a fresh install will self-heal them to the canonical array form.
+  // We also require the WP entry's command to match exactly; otherwise a re-install
+  // with a different command path (e.g. dev → prod) must proceed and refresh.
   const existingHooks = hooksField(pre.parsed)
   const allAlreadyManaged = options.hooks.every((h) => {
     const prior = existingHooks[h.event]
-    return isRecord(prior) && prior[WORKPANE_MARKER] === true
+    if (!Array.isArray(prior)) return false
+    return prior.some((entry) => {
+      if (!isRecord(entry)) return false
+      const inner = entry.hooks
+      if (!Array.isArray(inner)) return false
+      return inner.some(
+        (innerHook) =>
+          isRecord(innerHook) &&
+          innerHook[WORKPANE_MARKER] === true &&
+          innerHook.command === h.command
+      )
+    })
   })
   if (allAlreadyManaged && options.hooks.length > 0) {
     return {

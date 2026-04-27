@@ -228,7 +228,14 @@ test('L0Orchestrator — markHookObserved flips hook_fires on next refresh even 
   try {
     const settingsPath = path.join(dir, 'settings.json')
     fs.writeFileSync(settingsPath, JSON.stringify({
-      hooks: { PreToolUse: { 'workpane-managed': true, command: '/wp' } }
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '.*',
+            hooks: [{ type: 'command', command: '/wp', 'workpane-managed': true }]
+          }
+        ]
+      }
     }))
 
     const orch = new L0Orchestrator()

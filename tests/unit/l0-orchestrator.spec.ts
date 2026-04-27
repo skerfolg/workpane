@@ -46,7 +46,31 @@ test('detectHookInstallStatus — no hooks field reports not installed', () => {
   }
 })
 
-test('detectHookInstallStatus — marker present reports installed', () => {
+test('detectHookInstallStatus — canonical array form reports installed', () => {
+  const dir = scratchDir()
+  try {
+    const p = path.join(dir, 'settings.json')
+    fs.writeFileSync(p, JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '.*',
+            hooks: [{ type: 'command', command: '/wp', 'workpane-managed': true }]
+          }
+        ]
+      }
+    }))
+    const result = detectHookInstallStatus(p)
+    assert.equal(result.installed, true)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('detectHookInstallStatus — legacy buggy object form still detected (migration trigger)', () => {
+  // Pre-fix install wrote {workpane-managed:true, command:...}. CC rejects it
+  // but detector must still see it as "installed" so the user can re-install
+  // (which migrates to the array form).
   const dir = scratchDir()
   try {
     const p = path.join(dir, 'settings.json')
@@ -57,6 +81,25 @@ test('detectHookInstallStatus — marker present reports installed', () => {
     }))
     const result = detectHookInstallStatus(p)
     assert.equal(result.installed, true)
+    assert.match(result.reason, /legacy/)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('detectHookInstallStatus — array entry without marker is user-only (not installed)', () => {
+  const dir = scratchDir()
+  try {
+    const p = path.join(dir, 'settings.json')
+    fs.writeFileSync(p, JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          { matcher: 'Bash', hooks: [{ type: 'command', command: '/user/bash' }] }
+        ]
+      }
+    }))
+    const result = detectHookInstallStatus(p)
+    assert.equal(result.installed, false)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -84,7 +127,14 @@ test('probeCapabilities — unsupported CC → hook_installed=false even with ma
   try {
     const settingsPath = path.join(dir, 'settings.json')
     fs.writeFileSync(settingsPath, JSON.stringify({
-      hooks: { PreToolUse: { 'workpane-managed': true, command: '/wp' } }
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '.*',
+            hooks: [{ type: 'command', command: '/wp', 'workpane-managed': true }]
+          }
+        ]
+      }
     }))
 
     const snapshot = await probeCapabilities({
@@ -110,7 +160,14 @@ test('probeCapabilities — supported CC + marker → decision L0-A', async () =
   try {
     const settingsPath = path.join(dir, 'settings.json')
     fs.writeFileSync(settingsPath, JSON.stringify({
-      hooks: { PreToolUse: { 'workpane-managed': true, command: '/wp' } }
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '.*',
+            hooks: [{ type: 'command', command: '/wp', 'workpane-managed': true }]
+          }
+        ]
+      }
     }))
 
     const snapshot = await probeCapabilities({
