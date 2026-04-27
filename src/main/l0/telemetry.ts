@@ -114,6 +114,19 @@ export class L0Telemetry {
   }
   private readonly firstEventWaitChunks = new Histogram()
   private readonly emitLatencyMs = new Histogram()
+  // RW-C dedup counters — source of the event that lost the race (was
+  // a duplicate of an earlier emission for the same key).
+  private readonly dedupDroppedBySource: Record<'hook' | 'session-log' | 'stdout', number> = {
+    hook: 0,
+    'session-log': 0,
+    stdout: 0
+  }
+  // RW-C key-tier counters — how often we had to fall back below tier 1.
+  private readonly dedupKeyTier: Record<'id' | 'content' | 'kind-time', number> = {
+    id: 0,
+    content: 0,
+    'kind-time': 0
+  }
 
   recordEventEmitted(vendor: L0Vendor, latencyMs: number): void {
     void vendor
@@ -139,6 +152,31 @@ export class L0Telemetry {
 
   recordConsecutiveDecodeError(): void {
     this.consecutiveDecodeErrors += 1
+  }
+
+  /** RW-C: a duplicate event was suppressed by the dedup window. */
+  recordDedupDropped(source: 'hook' | 'session-log' | 'stdout'): void {
+    this.dedupDroppedBySource[source] += 1
+  }
+
+  /** RW-C: record which key tier an emitted event used. */
+  recordDedupKeyTier(tier: 'id' | 'content' | 'kind-time'): void {
+    this.dedupKeyTier[tier] += 1
+  }
+
+  /** RW-C: expose dedup counters for tests + Settings diagnostics. */
+  getDedupStats(): {
+    droppedBySource: Record<'hook' | 'session-log' | 'stdout', number>
+    keyTier: Record<'id' | 'content' | 'kind-time', number>
+    fallbackRate: number
+  } {
+    const total = this.dedupKeyTier.id + this.dedupKeyTier.content + this.dedupKeyTier['kind-time']
+    const belowId = this.dedupKeyTier.content + this.dedupKeyTier['kind-time']
+    return {
+      droppedBySource: { ...this.dedupDroppedBySource },
+      keyTier: { ...this.dedupKeyTier },
+      fallbackRate: total === 0 ? 0 : belowId / total
+    }
   }
 
   snapshot(): L0TelemetrySnapshot {
@@ -169,6 +207,12 @@ export class L0Telemetry {
     }
     this.firstEventWaitChunks.reset()
     this.emitLatencyMs.reset()
+    for (const source of Object.keys(this.dedupDroppedBySource) as Array<'hook' | 'session-log' | 'stdout'>) {
+      this.dedupDroppedBySource[source] = 0
+    }
+    for (const tier of Object.keys(this.dedupKeyTier) as Array<'id' | 'content' | 'kind-time'>) {
+      this.dedupKeyTier[tier] = 0
+    }
   }
 }
 

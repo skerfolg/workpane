@@ -15,7 +15,14 @@ import { ApprovalDetector } from './approval-detector'
 import { BrowserManager } from './browser-manager'
 import { McpBrowserHandler } from './mcp-browser-server'
 import { HistoryStore } from './history-store'
+import { CcHookAdapter } from './l0/adapters/cc-hook-adapter'
+import { CcSessionLogAdapter } from './l0/adapters/cc-session-log-adapter'
+import { CcStreamJsonAdapter } from './l0/adapters/cc-stream-json-adapter'
+import { L0Orchestrator } from './l0/l0-orchestrator'
 import { L0Pipeline } from './l0/pipeline'
+import { HookServer } from './l0/hook-server'
+import { registerHookListener, unregisterHookListener } from './l0/hook-registry'
+import { SessionLogTailerPool } from './l0/session-log-tailer-pool'
 import * as path from 'path'
 import { LlmManager } from './llm/manager'
 import type {
@@ -57,6 +64,10 @@ const mcpBrowserHandler = new McpBrowserHandler(browserManager)
 apiServer.setMcpBrowserHandler(mcpBrowserHandler)
 const crashRecovery = new CrashRecovery()
 let mainWindow: BrowserWindow | null = null
+// RW-B/E: hoisted so before-quit can reach them for explicit dispose
+// (code-reviewer MEDIUM). Assigned once inside app.whenReady().
+let l0OrchestratorRef: L0Orchestrator | null = null
+let tailerPoolRef: SessionLogTailerPool | null = null
 const monitoredTerminals = new Map<string, SessionMonitoringState>()
 const monitoringTransitionSequences = new Map<string, number>()
 
@@ -929,7 +940,7 @@ app.whenReady().then(() => {
     }
   })
   terminalManager.setApprovalDetector(approvalDetector)
-  const l0Pipeline = new L0Pipeline((state) => {
+  const l0Pipeline = new L0Pipeline(new CcStreamJsonAdapter(), (state) => {
     emitMonitoringUpsert(state)
   })
   l0Pipeline.onStatusChanged((status) => {
@@ -942,6 +953,195 @@ app.whenReady().then(() => {
     }
   })
   terminalManager.setL0Pipeline(l0Pipeline)
+
+  // RW-B runtime wiring — per-terminal HookServer + shared tailer pool.
+  // Kept in-scope so the callbacks close over these instances.
+  const hookServersByTerminal = new Map<string, HookServer>()
+  const tailerPool = new SessionLogTailerPool()
+  tailerPoolRef = tailerPool
+  const tailerHandles = new Map<string, { release: () => void }>()
+
+  terminalManager.setL0RuntimeHooks({
+    onClaudeBind: async ({ terminalId, workspacePath }) => {
+      // HookServer per terminal — listens + filters by cwd/session_id.
+      if (!hookServersByTerminal.has(terminalId)) {
+        const server = new HookServer({ terminalId, workspacePath })
+        server.on('payload', ({ terminalId: id, payload }) => {
+          // Mark observed + timestamp so the stale-check tick can tell
+          // whether the hook is healthy or genuinely stuck.
+          l0Orchestrator.markHookObserved(id, Date.now())
+          l0Pipeline.ingest(id, payload, workspacePath, 'hook')
+        })
+        server.on('auth-failure', (f) => {
+          console.warn(`[hook-server:${terminalId}] auth-failure: ${f.reason}`)
+        })
+        try {
+          const { socketPath, tokenFilePath } = await server.start()
+          registerHookListener({
+            pid: process.pid,
+            terminalId,
+            socketPath,
+            tokenPath: tokenFilePath,
+            workspacePath,
+            startedAt: Date.now()
+          })
+          hookServersByTerminal.set(terminalId, server)
+          // Install the hook adapter on the pipeline for this terminal so
+          // frame payloads are parsed as hook events instead of stdout.
+          l0Pipeline.setAdapterFor(terminalId, new CcHookAdapter())
+        } catch (error) {
+          console.warn(`[hook-server:${terminalId}] start failed:`, error)
+        }
+      }
+
+      // Session-log tailer via pool (shared by cwd).
+      if (!tailerHandles.has(terminalId)) {
+        const handle = tailerPool.acquire({
+          terminalId,
+          cwd: workspacePath,
+          onEnvelope: (envelope) => {
+            // RW-E: record the session-log tool_use timestamp so the
+            // evidence-guarded stale check can evaluate whether a
+            // silent hook is genuinely stuck vs the user being idle.
+            const payload = envelope.payload as Record<string, unknown>
+            const message = payload.message as Record<string, unknown> | undefined
+            const content = message && Array.isArray(message.content) ? message.content : []
+            const hasToolUse = content.some((block) =>
+              typeof block === 'object' && block !== null &&
+              (block as Record<string, unknown>).type === 'tool_use'
+            )
+            if (hasToolUse) {
+              l0Orchestrator.observeSessionLogToolUse(envelope.terminalId)
+            }
+            // Parse the envelope via the session-log adapter (separate
+            // from the per-terminal hook adapter override) then route
+            // the resulting L0Events through the pipeline's dedup +
+            // upsert layer tagged as 'session-log'. This keeps both
+            // sources hitting the shared dedup window without needing
+            // a multi-adapter-per-terminal data structure.
+            const sessionAdapter = sessionLogAdapterByTerminal.get(envelope.terminalId) ??
+              sessionLogAdapterByTerminal
+                .set(envelope.terminalId, new CcSessionLogAdapter())
+                .get(envelope.terminalId)!
+            const parsed = sessionAdapter.ingest(envelope.terminalId, envelope.payload)
+            if (parsed.kind === 'event') {
+              l0Pipeline.ingestEvents(envelope.terminalId, parsed.events, workspacePath, 'session-log')
+            }
+          }
+        })
+        tailerHandles.set(terminalId, handle)
+      }
+
+      // Refresh the per-terminal snapshot so Settings reflects the new
+      // capability immediately.
+      l0Orchestrator.bindTerminal({ terminalId, cwd: workspacePath })
+      await l0Orchestrator.refresh({ terminalId })
+    },
+    onTerminalClose: async (terminalId) => {
+      const server = hookServersByTerminal.get(terminalId)
+      if (server) {
+        hookServersByTerminal.delete(terminalId)
+        unregisterHookListener(process.pid, terminalId)
+        try {
+          await server.dispose()
+        } catch {
+          // best effort
+        }
+      }
+      const handle = tailerHandles.get(terminalId)
+      if (handle) {
+        tailerHandles.delete(terminalId)
+        try {
+          handle.release()
+        } catch {
+          // best effort
+        }
+      }
+      const sessionAdapter = sessionLogAdapterByTerminal.get(terminalId)
+      if (sessionAdapter) {
+        sessionLogAdapterByTerminal.delete(terminalId)
+        try {
+          sessionAdapter.dispose()
+        } catch {
+          // best effort
+        }
+      }
+      l0Pipeline.clearAdapterFor(terminalId)
+      l0Orchestrator.unbindTerminal(terminalId)
+    }
+  })
+
+  const sessionLogAdapterByTerminal = new Map<string, CcSessionLogAdapter>()
+
+  // Slice 2E — L0 orchestrator probe + IPC surface. The orchestrator only
+  // computes path-selector state; actual adapter swap at runtime is wired
+  // in a follow-up Slice 2 sub-task. Surface is ready for the 3-state
+  // Settings UI (Slice 2C/2D).
+  const l0Orchestrator = new L0Orchestrator()
+  l0OrchestratorRef = l0Orchestrator
+  // RW-E: evidence-guarded stale check runs every 20s so a silent hook
+  // with active session-log traffic triggers a downgrade without any
+  // direct user input.
+  l0Orchestrator.startStaleCheck()
+  void l0Orchestrator.refresh().catch((error) => {
+    // Detection is best-effort; failures fall through to L1 baseline.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('l0:path-probe-error', {
+        reason: error instanceof Error ? error.message : String(error)
+      })
+    }
+  })
+  l0Orchestrator.onChange((snapshot) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('l0:path-snapshot', snapshot)
+    }
+  })
+  ipcMain.handle('l0:get-path-snapshot', () => l0Orchestrator.getSnapshot())
+  ipcMain.handle('l0:refresh-path', async () => l0Orchestrator.refresh())
+  // RW-E: per-terminal snapshot list for Settings UI breakdown view.
+  ipcMain.handle('l0:list-per-terminal', () => l0Orchestrator.listPerTerminalSnapshots())
+  ipcMain.handle('l0:install-hooks', async () => {
+    const { installHooks } = await import('./l0/hook-installer')
+    const bridgePath = is.dev
+      ? join(__dirname, '..', '..', 'resources', 'hooks', 'cc-bridge.js')
+      : join(process.resourcesPath, 'hooks', 'cc-bridge.js')
+    const result = installHooks({
+      hooks: [
+        { event: 'PreToolUse', command: `node "${bridgePath}"` },
+        { event: 'PostToolUse', command: `node "${bridgePath}"` },
+        { event: 'SessionStart', command: `node "${bridgePath}"` },
+        { event: 'SessionEnd', command: `node "${bridgePath}"` }
+      ]
+    })
+    await l0Orchestrator.refresh()
+    return result
+  })
+  ipcMain.handle('l0:uninstall-hooks', async () => {
+    const { uninstallHooks } = await import('./l0/hook-installer')
+    const result = uninstallHooks({
+      events: ['PreToolUse', 'PostToolUse', 'SessionStart', 'SessionEnd']
+    })
+    await l0Orchestrator.refresh()
+    return result
+  })
+  // Slice 2.7 — explicit vendor selection. The renderer calls this when
+  // the user clicks "Mark as Claude Code" so onClaudeBind fires reliably
+  // even when CC's TUI cell-painting prevents banner auto-detection.
+  ipcMain.handle('terminal:set-vendor', (_event, terminalId: string, vendor: string) => {
+    if (typeof terminalId !== 'string' || typeof vendor !== 'string') {
+      return { ok: false, reason: 'invalid arguments' }
+    }
+    // L0Vendor is currently 'claude-code' only. When the union expands
+    // (codex / gemini), accept those here too and forward verbatim.
+    if (vendor !== 'claude-code') {
+      return { ok: false, reason: `unsupported vendor: ${vendor}` }
+    }
+    const ok = terminalManager.setVendor(terminalId, vendor)
+    return ok
+      ? { ok: true }
+      : { ok: false, reason: 'terminal not found or already has a different vendor' }
+  })
+
   const customPatterns = (settingsManager.get('notification.customPatterns') ?? []) as Array<{ name: string; pattern: string }>
   approvalDetector.setCustomPatterns(customPatterns)
 
@@ -967,6 +1167,16 @@ app.on('before-quit', () => {
   terminalManager.dispose()
   watcherManager.stop()
   apiServer.stop()
+  // RW-B/E cleanup (code-reviewer MEDIUM): terminalManager.dispose()
+  // cascades into per-terminal HookServer and tailer handle releases,
+  // but the orchestrator's stale-check timer + pool module-level state
+  // still need explicit teardown.
+  try {
+    l0OrchestratorRef?.dispose()
+  } catch {
+    // Best-effort cleanup on shutdown.
+  }
+  tailerPoolRef?.dispose().catch(() => undefined)
 })
 
 // --- Global error handlers for main process diagnostics ---

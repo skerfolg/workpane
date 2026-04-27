@@ -1,13 +1,12 @@
 import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { L0PathSnapshotShape } from './types'
 import type {
   ApprovalDetectedEvent,
   L0Status,
   L0StatusChangedEvent,
   L0Vendor,
   ManualTaskRecord,
-  MonitoringHistoryEvent,
-  MonitoringHistoryStoreStatus,
   MonitoringTimelineFilter,
   SessionMonitoringClearEvent,
   SessionMonitoringTransitionEvent,
@@ -274,6 +273,27 @@ const monitoringHistoryAPI = {
     ipcRenderer.invoke('history:complete-manual-task', taskId, link) as Promise<ManualTaskRecord | null>
 }
 
+// Slice 2E/2D — L0 path snapshot / subscription + hook install surface
+const l0API = {
+  getPathSnapshot: () => ipcRenderer.invoke('l0:get-path-snapshot'),
+  refreshPath: () => ipcRenderer.invoke('l0:refresh-path'),
+  listPerTerminal: () => ipcRenderer.invoke('l0:list-per-terminal'),
+  installHooks: () => ipcRenderer.invoke('l0:install-hooks'),
+  uninstallHooks: () => ipcRenderer.invoke('l0:uninstall-hooks'),
+  setTerminalVendor: (terminalId: string, vendor: 'claude-code') =>
+    ipcRenderer.invoke('terminal:set-vendor', terminalId, vendor),
+  onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: L0PathSnapshotShape): void => callback(data)
+    ipcRenderer.on('l0:path-snapshot', handler)
+    return () => ipcRenderer.removeListener('l0:path-snapshot', handler)
+  },
+  onPathProbeError: (callback: (data: { reason: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { reason: string }): void => callback(data)
+    ipcRenderer.on('l0:path-probe-error', handler)
+    return () => ipcRenderer.removeListener('l0:path-probe-error', handler)
+  }
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -292,6 +312,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('recovery', recoveryAPI)
     contextBridge.exposeInMainWorld('clipboard', clipboardAPI)
     contextBridge.exposeInMainWorld('browser', browserAPI)
+    contextBridge.exposeInMainWorld('l0', l0API)
   } catch (error) {
     console.error(error)
   }
@@ -328,4 +349,6 @@ if (process.contextIsolated) {
   window.clipboard = clipboardAPI
   // @ts-ignore (define in dts)
   window.browser = browserAPI
+  // @ts-ignore (define in dts)
+  window.l0 = l0API
 }

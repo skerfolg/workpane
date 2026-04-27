@@ -201,6 +201,30 @@ export interface UpdaterAPI {
   check: () => Promise<void>
 }
 
+export type {
+  L0PathStateShape,
+  L0PathDecisionShape,
+  L0PathSnapshotShape,
+  L0CcDetectionShape,
+  L0CcVersionShape,
+  L0HookInstallResult
+} from './types'
+import type { L0PathSnapshotShape, L0HookInstallResult } from './types'
+
+export interface L0API {
+  getPathSnapshot: () => Promise<L0PathSnapshotShape | null>
+  refreshPath: () => Promise<L0PathSnapshotShape>
+  listPerTerminal: () => Promise<L0PathSnapshotShape[]>
+  installHooks: () => Promise<L0HookInstallResult>
+  uninstallHooks: () => Promise<L0HookInstallResult>
+  setTerminalVendor: (
+    terminalId: string,
+    vendor: 'claude-code'
+  ) => Promise<{ ok: boolean; reason?: string }>
+  onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => () => void
+  onPathProbeError: (callback: (data: { reason: string }) => void) => () => void
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -216,6 +240,7 @@ declare global {
     theme: ThemeAPI
     updater: UpdaterAPI
     browser: BrowserAPI
+    l0: L0API
     api: unknown
   }
 }

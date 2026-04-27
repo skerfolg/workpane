@@ -96,9 +96,20 @@ export class TerminalManager {
   private terminalWorkspaces: Map<string, string> = new Map()
   private terminalVendorHints: Map<string, L0Vendor> = new Map()
   private readonly MAX_BUFFER_BYTES = 524_288  // 512KB
+  // Slice 2.6 — vendor auto-detect from stdout banner. The renderer doesn't
+  // pass vendorHint when creating terminals, so claude-code terminals would
+  // never trigger onClaudeBind without this fallback. Caps out after the
+  // first ~4KB of output (CC banner is in first ~200 bytes after spawn).
+  private vendorAutoDetectBuffer: Map<string, string> = new Map()
+  private vendorAutoDetected: Set<string> = new Set()
+  private readonly VENDOR_AUTO_DETECT_BUFFER_CAP = 4096
   private terminalDisposables: Map<string, Array<{ dispose: () => void }>> = new Map()
   private approvalDetector: import('./approval-detector').ApprovalDetector | null = null
   private l0Pipeline: import('./l0/pipeline').L0Pipeline | null = null
+  private l0RuntimeHooks: {
+    onClaudeBind: (args: { terminalId: string; workspacePath: string }) => Promise<void> | void
+    onTerminalClose: (terminalId: string) => Promise<void> | void
+  } | null = null
 
   getDefaultShell(): string {
     if (this.cachedShell) return this.cachedShell
@@ -139,10 +150,100 @@ export class TerminalManager {
       byteCount -= Buffer.byteLength(removed)
     }
     this.scrollbackByteCounts.set(id, byteCount)
+    // Slice 2.6 — auto-detect Claude Code vendor from stdout banner before
+    // the L0 pipeline ingest, so a banner that lands on the first PTY tick
+    // still triggers HookServer + tailer-pool wire-up via onClaudeBind.
+    this.tryAutoDetectClaudeVendor(id, data)
     const suppressApprovalDetector =
       this.l0Pipeline?.ingest(id, data, this.getWorkspace(id) ?? '')?.suppressApprovalDetector ?? false
     if (!suppressApprovalDetector) {
       this.approvalDetector?.check(id, data, this.getWorkspace(id) ?? '')
+    }
+  }
+
+  /**
+   * Slice 2.6 — Claude Code emits a stable boot banner on first activation:
+   *
+   *     Claude Code v2.1.119
+   *     Opus 4.7 (1M context) · Claude Max
+   *     <cwd>
+   *
+   * If the renderer didn't pass vendorHint='claude-code' (the current
+   * default — no UI surfaces explicit vendor selection), we still want
+   * the L0 runtime to wire up. Strip ANSI from the first ~4KB and match
+   * the version line; on hit, set the vendor + fire onClaudeBind exactly
+   * once. After the cap or after a hit, all further data for this
+   * terminal is skipped — this is on the hot path.
+   */
+  /**
+   * Slice 2.7 — explicit vendor selection. The renderer can call this on
+   * an existing terminal to backfill the vendor hint after the user marks
+   * it manually (e.g. via the "Mark as Claude Code" UI). Idempotent: a
+   * terminal that already carries the same vendor is a no-op.
+   *
+   * Does NOT spawn anything; the underlying PTY must already exist.
+   * Returns true on success, false if the terminal is unknown or the
+   * vendor was already set to a different value.
+   */
+  setVendor(id: string, vendor: L0Vendor): boolean {
+    if (!this.terminals.has(id)) return false
+    const prior = this.terminalVendorHints.get(id)
+    if (prior === vendor) return true
+    if (prior !== undefined && prior !== vendor) {
+      // Don't silently overwrite a different prior vendor — caller must
+      // be explicit if they want to swap (e.g. on terminal recycle).
+      return false
+    }
+    this.terminalVendorHints.set(id, vendor)
+    // Auto-detect bookkeeping: short-circuit any further banner probing.
+    this.vendorAutoDetectBuffer.delete(id)
+    this.vendorAutoDetected.add(id)
+    this.l0Pipeline?.bindVendor(id, vendor)
+    if (vendor === 'claude-code' && this.l0RuntimeHooks) {
+      const cwd = this.getWorkspace(id) ?? ''
+      void Promise.resolve(
+        this.l0RuntimeHooks.onClaudeBind({ terminalId: id, workspacePath: cwd })
+      ).catch((error) => {
+        console.warn(`[l0-runtime] onClaudeBind (explicit) failed for ${id}:`, error)
+      })
+    }
+    return true
+  }
+
+  private tryAutoDetectClaudeVendor(id: string, data: string): void {
+    if (this.terminalVendorHints.has(id)) return
+    if (this.vendorAutoDetected.has(id)) return
+
+    const prior = this.vendorAutoDetectBuffer.get(id) ?? ''
+    const next = prior + data
+    if (next.length > this.VENDOR_AUTO_DETECT_BUFFER_CAP) {
+      // Give up — banner should appear in the first PTY tick or two.
+      // Note: CC TUI uses cell-positioning (alternative screen buffer)
+      // so the banner often does not appear as a contiguous string in
+      // the raw stream. Auto-detect remains best-effort; the explicit
+      // "Mark as Claude Code" path is the reliable primary trigger.
+      this.vendorAutoDetectBuffer.delete(id)
+      this.vendorAutoDetected.add(id)
+      return
+    }
+    this.vendorAutoDetectBuffer.set(id, next)
+
+    // Strip CSI / OSC ANSI escape sequences before pattern match.
+    // eslint-disable-next-line no-control-regex
+    const stripped = next.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '')
+    if (!/Claude Code v\d+\.\d+\.\d+/.test(stripped)) return
+
+    const cwd = this.getWorkspace(id) ?? ''
+    this.terminalVendorHints.set(id, 'claude-code')
+    this.vendorAutoDetectBuffer.delete(id)
+    this.vendorAutoDetected.add(id)
+    this.l0Pipeline?.bindVendor(id, 'claude-code')
+    if (this.l0RuntimeHooks) {
+      void Promise.resolve(
+        this.l0RuntimeHooks.onClaudeBind({ terminalId: id, workspacePath: cwd })
+      ).catch((error) => {
+        console.warn(`[l0-runtime] onClaudeBind (auto-detected) failed for ${id}:`, error)
+      })
     }
   }
 
@@ -186,6 +287,22 @@ export class TerminalManager {
     this.l0Pipeline = pipeline
   }
 
+  /**
+   * RW-B: injected by main/index.ts to start HookServer + tailer-pool
+   * subscription whenever a terminal is marked as 'claude-code' vendor
+   * and binds its cwd. Optional so unit tests that only wire a
+   * TerminalManager do not need the L0 runtime plumbing.
+   */
+  setL0RuntimeHooks(hooks: {
+    onClaudeBind: (args: {
+      terminalId: string
+      workspacePath: string
+    }) => Promise<void> | void
+    onTerminalClose: (terminalId: string) => Promise<void> | void
+  }): void {
+    this.l0RuntimeHooks = hooks
+  }
+
   private buildSpawnEnv(env?: NodeJS.ProcessEnv): Record<string, string> {
     return Object.fromEntries(
       Object.entries(env ?? (process.env as NodeJS.ProcessEnv))
@@ -218,6 +335,17 @@ export class TerminalManager {
       // Bind BEFORE spawn so any L0 chunks emitted on the very first PTY
       // tick are recognized by the pipeline (Code-reviewer HIGH-2 race fix).
       this.l0Pipeline?.bindVendor(id, sanitizedVendorHint)
+      // RW-B: claude-code terminals also bring up a per-terminal
+      // HookServer + join the session-log tailer pool. main/index.ts
+      // wires the actual components via setL0RuntimeHooks; we just
+      // trigger the callback here.
+      if (sanitizedVendorHint === 'claude-code' && this.l0RuntimeHooks) {
+        void Promise.resolve(
+          this.l0RuntimeHooks.onClaudeBind({ terminalId: id, workspacePath: resolvedCwd })
+        ).catch((error) => {
+          console.warn(`[l0-runtime] onClaudeBind failed for ${id}:`, error)
+        })
+      }
     }
 
     const term = pty.spawn(resolvedShell, args, {
@@ -270,8 +398,23 @@ export class TerminalManager {
     this.scrollbackBuffers.delete(id)
     this.scrollbackByteCounts.delete(id)
     this.terminalWorkspaces.delete(id)
+    const priorVendor = this.terminalVendorHints.get(id)
     this.terminalVendorHints.delete(id)
+    // Slice 2.6 — release the auto-detect tracking maps so a recycled id
+    // (which can happen across reload cycles in dev) starts clean.
+    this.vendorAutoDetectBuffer.delete(id)
+    this.vendorAutoDetected.delete(id)
     this.l0Pipeline?.reset(id)
+    // RW-B: inform main-process L0 runtime so HookServer is disposed
+    // and the tailer-pool reference is released. We fire this even for
+    // non-claude-code terminals because the runtime may own other
+    // per-terminal state (telemetry, dedup buffers) that deserves
+    // cleanup. Errors are swallowed — kill must always succeed.
+    if (priorVendor === 'claude-code' && this.l0RuntimeHooks) {
+      void Promise.resolve(this.l0RuntimeHooks.onTerminalClose(id)).catch((error) => {
+        console.warn(`[l0-runtime] onTerminalClose failed for ${id}:`, error)
+      })
+    }
   }
 
   get(id: string): pty.IPty | undefined {

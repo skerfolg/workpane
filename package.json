@@ -78,6 +78,13 @@
     "files": [
       "out/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "resources/hooks",
+        "to": "hooks",
+        "filter": ["**/*"]
+      }
+    ],
     "directories": {
       "output": "dist"
     },
