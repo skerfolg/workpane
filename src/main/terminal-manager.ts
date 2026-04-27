@@ -96,6 +96,13 @@ export class TerminalManager {
   private terminalWorkspaces: Map<string, string> = new Map()
   private terminalVendorHints: Map<string, L0Vendor> = new Map()
   private readonly MAX_BUFFER_BYTES = 524_288  // 512KB
+  // Slice 2.6 — vendor auto-detect from stdout banner. The renderer doesn't
+  // pass vendorHint when creating terminals, so claude-code terminals would
+  // never trigger onClaudeBind without this fallback. Caps out after the
+  // first ~4KB of output (CC banner is in first ~200 bytes after spawn).
+  private vendorAutoDetectBuffer: Map<string, string> = new Map()
+  private vendorAutoDetected: Set<string> = new Set()
+  private readonly VENDOR_AUTO_DETECT_BUFFER_CAP = 4096
   private terminalDisposables: Map<string, Array<{ dispose: () => void }>> = new Map()
   private approvalDetector: import('./approval-detector').ApprovalDetector | null = null
   private l0Pipeline: import('./l0/pipeline').L0Pipeline | null = null
@@ -143,10 +150,63 @@ export class TerminalManager {
       byteCount -= Buffer.byteLength(removed)
     }
     this.scrollbackByteCounts.set(id, byteCount)
+    // Slice 2.6 — auto-detect Claude Code vendor from stdout banner before
+    // the L0 pipeline ingest, so a banner that lands on the first PTY tick
+    // still triggers HookServer + tailer-pool wire-up via onClaudeBind.
+    this.tryAutoDetectClaudeVendor(id, data)
     const suppressApprovalDetector =
       this.l0Pipeline?.ingest(id, data, this.getWorkspace(id) ?? '')?.suppressApprovalDetector ?? false
     if (!suppressApprovalDetector) {
       this.approvalDetector?.check(id, data, this.getWorkspace(id) ?? '')
+    }
+  }
+
+  /**
+   * Slice 2.6 — Claude Code emits a stable boot banner on first activation:
+   *
+   *     Claude Code v2.1.119
+   *     Opus 4.7 (1M context) · Claude Max
+   *     <cwd>
+   *
+   * If the renderer didn't pass vendorHint='claude-code' (the current
+   * default — no UI surfaces explicit vendor selection), we still want
+   * the L0 runtime to wire up. Strip ANSI from the first ~4KB and match
+   * the version line; on hit, set the vendor + fire onClaudeBind exactly
+   * once. After the cap or after a hit, all further data for this
+   * terminal is skipped — this is on the hot path.
+   */
+  private tryAutoDetectClaudeVendor(id: string, data: string): void {
+    if (this.terminalVendorHints.has(id)) return
+    if (this.vendorAutoDetected.has(id)) return
+
+    const prior = this.vendorAutoDetectBuffer.get(id) ?? ''
+    const next = prior + data
+    if (next.length > this.VENDOR_AUTO_DETECT_BUFFER_CAP) {
+      // Give up — banner should appear in the first PTY tick or two.
+      this.vendorAutoDetectBuffer.delete(id)
+      this.vendorAutoDetected.add(id)
+      return
+    }
+    this.vendorAutoDetectBuffer.set(id, next)
+
+    // Strip CSI / OSC ANSI escape sequences before pattern match. CC's
+    // banner uses bold/color codes that would otherwise split the literal.
+    // eslint-disable-next-line no-control-regex
+    const stripped = next.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '')
+    if (!/Claude Code v\d+\.\d+\.\d+/.test(stripped)) return
+
+    // Hit — wire up as if vendorHint had been provided at spawn time.
+    const cwd = this.getWorkspace(id) ?? ''
+    this.terminalVendorHints.set(id, 'claude-code')
+    this.vendorAutoDetectBuffer.delete(id)
+    this.vendorAutoDetected.add(id)
+    this.l0Pipeline?.bindVendor(id, 'claude-code')
+    if (this.l0RuntimeHooks) {
+      void Promise.resolve(
+        this.l0RuntimeHooks.onClaudeBind({ terminalId: id, workspacePath: cwd })
+      ).catch((error) => {
+        console.warn(`[l0-runtime] onClaudeBind (auto-detected) failed for ${id}:`, error)
+      })
     }
   }
 
@@ -303,6 +363,10 @@ export class TerminalManager {
     this.terminalWorkspaces.delete(id)
     const priorVendor = this.terminalVendorHints.get(id)
     this.terminalVendorHints.delete(id)
+    // Slice 2.6 — release the auto-detect tracking maps so a recycled id
+    // (which can happen across reload cycles in dev) starts clean.
+    this.vendorAutoDetectBuffer.delete(id)
+    this.vendorAutoDetected.delete(id)
     this.l0Pipeline?.reset(id)
     // RW-B: inform main-process L0 runtime so HookServer is disposed
     // and the tailer-pool reference is released. We fire this even for
