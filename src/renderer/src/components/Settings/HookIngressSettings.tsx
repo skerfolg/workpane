@@ -60,6 +60,10 @@ export function HookIngressSettings(): React.JSX.Element {
   const [lastActionResult, setLastActionResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [perTerminal, setPerTerminal] = useState<L0PathSnapshotShape[]>([])
   const [breakdownExpanded, setBreakdownExpanded] = useState(false)
+  // Slice 2.7 — explicit vendor marking. CC TUI uses cell-positioning, so
+  // the auto-detect banner regex misses real CC sessions. The user marks a
+  // terminal as Claude Code here, which fires onClaudeBind reliably.
+  const [markTerminalId, setMarkTerminalId] = useState('')
 
   // RW-E: fetch per-terminal breakdown on mount and whenever a snapshot
   // changes (path-snapshot event fires per refresh).
@@ -161,6 +165,39 @@ export function HookIngressSettings(): React.JSX.Element {
       setBusy(false)
     }
   }, [])
+
+  const handleMarkAsClaudeCode = useCallback(async () => {
+    const id = markTerminalId.trim()
+    if (!id) {
+      setLastActionResult({ ok: false, message: '터미널 ID 가 비어있습니다' })
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await window.l0.setTerminalVendor(id, 'claude-code')
+      if (result.ok) {
+        setLastActionResult({
+          ok: true,
+          message: `${id} 을(를) Claude Code 로 표시했습니다. HookServer 가 시작됩니다.`
+        })
+        setMarkTerminalId('')
+        // Refresh per-terminal breakdown so the new tier shows up.
+        void loadPerTerminal()
+      } else {
+        setLastActionResult({
+          ok: false,
+          message: `표시 실패: ${result.reason ?? 'unknown'}`
+        })
+      }
+    } catch (error) {
+      setLastActionResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error)
+      })
+    } finally {
+      setBusy(false)
+    }
+  }, [markTerminalId, loadPerTerminal])
 
   if (!snapshot) {
     return (
@@ -288,6 +325,55 @@ export function HookIngressSettings(): React.JSX.Element {
           {lastActionResult.ok ? '✅' : '⚠'} {lastActionResult.message}
         </p>
       ) : null}
+
+      {/* Slice 2.7 — explicit vendor marking. Auto-detect (banner regex)
+          misses CC TUI cell-painting; this is the reliable primary path. */}
+      <div style={{ marginTop: 12, padding: '8px 0', borderTop: '1px solid #333' }}>
+        <p style={{ fontSize: 12, color: '#888', margin: '0 0 6px' }}>
+          이미 만든 터미널을 Claude Code 로 명시 표시하면 HookServer 가 즉시 시작되어 hook
+          payload 가 라우팅됩니다. 터미널 ID 는 dev console 의{' '}
+          <code style={{ background: '#222', padding: '0 4px' }}>TerminalManager.create id=...</code>{' '}
+          로그에서 확인합니다 (예: <code>terminal-15</code>).
+        </p>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            placeholder="terminal-NN"
+            value={markTerminalId}
+            onChange={(e) => setMarkTerminalId(e.target.value)}
+            disabled={busy}
+            data-testid="hook-ingress-mark-input"
+            style={{
+              flex: '1 1 140px',
+              minWidth: 100,
+              padding: '4px 6px',
+              fontSize: 12,
+              fontFamily: 'monospace',
+              background: '#1a1a1a',
+              color: '#ddd',
+              border: '1px solid #444',
+              borderRadius: 3
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleMarkAsClaudeCode}
+            disabled={busy || !markTerminalId.trim()}
+            data-testid="hook-ingress-mark-button"
+            style={{
+              padding: '4px 10px',
+              fontSize: 12,
+              background: '#2b5a7a',
+              color: 'white',
+              border: '1px solid #2b5a7a',
+              borderRadius: 3,
+              cursor: busy || !markTerminalId.trim() ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {busy ? '표시 중...' : 'Claude Code 로 표시'}
+          </button>
+        </div>
+      </div>
 
       {perTerminal.length > 0 ? (
         <div style={{ marginTop: 12, borderTop: '1px solid #333', paddingTop: 8 }}>

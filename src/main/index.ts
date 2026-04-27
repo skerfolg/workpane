@@ -1124,6 +1124,23 @@ app.whenReady().then(() => {
     await l0Orchestrator.refresh()
     return result
   })
+  // Slice 2.7 — explicit vendor selection. The renderer calls this when
+  // the user clicks "Mark as Claude Code" so onClaudeBind fires reliably
+  // even when CC's TUI cell-painting prevents banner auto-detection.
+  ipcMain.handle('terminal:set-vendor', (_event, terminalId: string, vendor: string) => {
+    if (typeof terminalId !== 'string' || typeof vendor !== 'string') {
+      return { ok: false, reason: 'invalid arguments' }
+    }
+    // L0Vendor is currently 'claude-code' only. When the union expands
+    // (codex / gemini), accept those here too and forward verbatim.
+    if (vendor !== 'claude-code') {
+      return { ok: false, reason: `unsupported vendor: ${vendor}` }
+    }
+    const ok = terminalManager.setVendor(terminalId, vendor)
+    return ok
+      ? { ok: true }
+      : { ok: false, reason: 'terminal not found or already has a different vendor' }
+  })
 
   const customPatterns = (settingsManager.get('notification.customPatterns') ?? []) as Array<{ name: string; pattern: string }>
   approvalDetector.setCustomPatterns(customPatterns)

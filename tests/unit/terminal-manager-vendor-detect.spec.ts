@@ -179,3 +179,91 @@ test('vendor auto-detect — uses workspace path captured at first chunk', () =>
   assert.equal(bindCalls.length, 1)
   assert.equal(bindCalls[0].workspacePath, 'C:\\Users\\me\\repo')
 })
+
+// Slice 2.7 — explicit vendor selection via setVendor(). This is the
+// reliable primary path because CC TUI uses cell-positioning that the
+// banner-regex auto-detect cannot recover from a raw stream.
+
+function injectFakeTerminal(manager: TerminalManager, id: string): void {
+  // setVendor returns false if `terminals.has(id)` is false, so seed a
+  // sentinel object — only its presence in the map is checked.
+  ;(manager as unknown as { terminals: Map<string, unknown> }).terminals.set(id, {
+    write: () => {},
+    resize: () => {},
+    kill: () => {},
+    onData: () => ({ dispose: () => {} }),
+    onExit: () => ({ dispose: () => {} })
+  })
+}
+
+test('setVendor — claude-code on a known terminal fires onClaudeBind once', () => {
+  const { manager, bindCalls, pipelineBindVendor } = makeManagerWithRecorder()
+  const id = 's1'
+  injectFakeTerminal(manager, id)
+  seedWorkspace(manager, id, 'D:\\proj')
+
+  const ok = manager.setVendor(id, 'claude-code')
+
+  assert.equal(ok, true)
+  assert.equal(manager.getVendorHint(id), 'claude-code')
+  assert.deepEqual(pipelineBindVendor, [{ id, vendor: 'claude-code' }])
+  assert.equal(bindCalls.length, 1)
+  assert.equal(bindCalls[0].terminalId, id)
+  assert.equal(bindCalls[0].workspacePath, 'D:\\proj')
+})
+
+test('setVendor — unknown terminal returns false, fires nothing', () => {
+  const { manager, bindCalls, pipelineBindVendor } = makeManagerWithRecorder()
+  const ok = manager.setVendor('does-not-exist', 'claude-code')
+  assert.equal(ok, false)
+  assert.equal(bindCalls.length, 0)
+  assert.equal(pipelineBindVendor.length, 0)
+})
+
+test('setVendor — same vendor twice is idempotent (no second onClaudeBind)', () => {
+  const { manager, bindCalls } = makeManagerWithRecorder()
+  const id = 's3'
+  injectFakeTerminal(manager, id)
+  seedWorkspace(manager, id, '.')
+
+  assert.equal(manager.setVendor(id, 'claude-code'), true)
+  assert.equal(manager.setVendor(id, 'claude-code'), true)
+
+  assert.equal(bindCalls.length, 1, 'second call must not refire')
+})
+
+test('setVendor — refuses to overwrite a different prior vendor', () => {
+  const { manager, bindCalls } = makeManagerWithRecorder()
+  const id = 's4'
+  injectFakeTerminal(manager, id)
+  seedWorkspace(manager, id, '.')
+
+  // L0Vendor is currently union of one ('claude-code'). To simulate a
+  // pre-existing different vendor, seed the internal map directly with a
+  // sentinel string. setVendor must refuse to overwrite it.
+  ;(manager as unknown as { terminalVendorHints: Map<string, string> }).terminalVendorHints.set(
+    id,
+    'sentinel-other'
+  )
+  assert.equal(manager.setVendor(id, 'claude-code'), false)
+  assert.equal(
+    (manager as unknown as { terminalVendorHints: Map<string, string> }).terminalVendorHints.get(id),
+    'sentinel-other'
+  )
+  assert.equal(bindCalls.length, 0, 'must not fire onClaudeBind on refused overwrite')
+})
+
+test('setVendor — short-circuits subsequent banner auto-detect probing', () => {
+  const { manager, bindCalls } = makeManagerWithRecorder()
+  const id = 's5'
+  injectFakeTerminal(manager, id)
+  seedWorkspace(manager, id, '.')
+
+  manager.setVendor(id, 'claude-code')
+  assert.equal(bindCalls.length, 1)
+
+  // After explicit mark, subsequent stdout (even with a banner) must NOT
+  // refire onClaudeBind via auto-detect — the per-id flag is set.
+  manager.appendToBuffer(id, 'Claude Code v2.1.119\nfoo\n')
+  assert.equal(bindCalls.length, 1)
+})

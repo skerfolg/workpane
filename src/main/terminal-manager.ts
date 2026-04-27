@@ -175,6 +175,41 @@ export class TerminalManager {
    * once. After the cap or after a hit, all further data for this
    * terminal is skipped — this is on the hot path.
    */
+  /**
+   * Slice 2.7 — explicit vendor selection. The renderer can call this on
+   * an existing terminal to backfill the vendor hint after the user marks
+   * it manually (e.g. via the "Mark as Claude Code" UI). Idempotent: a
+   * terminal that already carries the same vendor is a no-op.
+   *
+   * Does NOT spawn anything; the underlying PTY must already exist.
+   * Returns true on success, false if the terminal is unknown or the
+   * vendor was already set to a different value.
+   */
+  setVendor(id: string, vendor: L0Vendor): boolean {
+    if (!this.terminals.has(id)) return false
+    const prior = this.terminalVendorHints.get(id)
+    if (prior === vendor) return true
+    if (prior !== undefined && prior !== vendor) {
+      // Don't silently overwrite a different prior vendor — caller must
+      // be explicit if they want to swap (e.g. on terminal recycle).
+      return false
+    }
+    this.terminalVendorHints.set(id, vendor)
+    // Auto-detect bookkeeping: short-circuit any further banner probing.
+    this.vendorAutoDetectBuffer.delete(id)
+    this.vendorAutoDetected.add(id)
+    this.l0Pipeline?.bindVendor(id, vendor)
+    if (vendor === 'claude-code' && this.l0RuntimeHooks) {
+      const cwd = this.getWorkspace(id) ?? ''
+      void Promise.resolve(
+        this.l0RuntimeHooks.onClaudeBind({ terminalId: id, workspacePath: cwd })
+      ).catch((error) => {
+        console.warn(`[l0-runtime] onClaudeBind (explicit) failed for ${id}:`, error)
+      })
+    }
+    return true
+  }
+
   private tryAutoDetectClaudeVendor(id: string, data: string): void {
     if (this.terminalVendorHints.has(id)) return
     if (this.vendorAutoDetected.has(id)) return
@@ -183,19 +218,21 @@ export class TerminalManager {
     const next = prior + data
     if (next.length > this.VENDOR_AUTO_DETECT_BUFFER_CAP) {
       // Give up — banner should appear in the first PTY tick or two.
+      // Note: CC TUI uses cell-positioning (alternative screen buffer)
+      // so the banner often does not appear as a contiguous string in
+      // the raw stream. Auto-detect remains best-effort; the explicit
+      // "Mark as Claude Code" path is the reliable primary trigger.
       this.vendorAutoDetectBuffer.delete(id)
       this.vendorAutoDetected.add(id)
       return
     }
     this.vendorAutoDetectBuffer.set(id, next)
 
-    // Strip CSI / OSC ANSI escape sequences before pattern match. CC's
-    // banner uses bold/color codes that would otherwise split the literal.
+    // Strip CSI / OSC ANSI escape sequences before pattern match.
     // eslint-disable-next-line no-control-regex
     const stripped = next.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '')
     if (!/Claude Code v\d+\.\d+\.\d+/.test(stripped)) return
 
-    // Hit — wire up as if vendorHint had been provided at spawn time.
     const cwd = this.getWorkspace(id) ?? ''
     this.terminalVendorHints.set(id, 'claude-code')
     this.vendorAutoDetectBuffer.delete(id)

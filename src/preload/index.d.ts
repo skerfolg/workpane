@@ -217,6 +217,10 @@ export interface L0API {
   listPerTerminal: () => Promise<L0PathSnapshotShape[]>
   installHooks: () => Promise<L0HookInstallResult>
   uninstallHooks: () => Promise<L0HookInstallResult>
+  setTerminalVendor: (
+    terminalId: string,
+    vendor: 'claude-code'
+  ) => Promise<{ ok: boolean; reason?: string }>
   onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => () => void
   onPathProbeError: (callback: (data: { reason: string }) => void) => () => void
 }

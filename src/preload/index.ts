@@ -280,6 +280,8 @@ const l0API = {
   listPerTerminal: () => ipcRenderer.invoke('l0:list-per-terminal'),
   installHooks: () => ipcRenderer.invoke('l0:install-hooks'),
   uninstallHooks: () => ipcRenderer.invoke('l0:uninstall-hooks'),
+  setTerminalVendor: (terminalId: string, vendor: 'claude-code') =>
+    ipcRenderer.invoke('terminal:set-vendor', terminalId, vendor),
   onPathSnapshot: (callback: (snapshot: L0PathSnapshotShape) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: L0PathSnapshotShape): void => callback(data)
     ipcRenderer.on('l0:path-snapshot', handler)
